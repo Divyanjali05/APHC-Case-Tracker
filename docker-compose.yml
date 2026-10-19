@@ -7,14 +7,15 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-aphc_tracker}
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_USER: ${POSTGRES_USER:-aphc_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aphc_dev_secret}
+    # Bound to 127.0.0.1 to avoid exposing database publicly
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-aphc_tracker}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-aphc_user} -d ${POSTGRES_DB:-aphc_tracker}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -23,8 +24,9 @@ services:
     image: redis:7-alpine
     container_name: aphc_redis
     restart: unless-stopped
+    # Bound to 127.0.0.1 to avoid exposing Redis broker publicly
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
     healthcheck:

@@ -67,7 +67,7 @@ graph TD
 - **`notifications/`**: Push notification dispatching, device token registry, notification history, and category subscriptions.
 - **`tests/`**: Pytest test suite covering all apps, API contracts, and edge cases.
 
-## 3. Mobile Architecture (`mobile/`)
+## 3. Mobile Architecture (`frontend/`)
 
 - **`app/`**: File-based routing with Expo Router:
   - `(auth)`: Login, Register, Forgot Password.

@@ -1,0 +1,75 @@
+{
+  "common": {
+    "appName": "APHC केस ट्रैकर",
+    "courtName": "आंध्र प्रदेश उच्च न्यायालय",
+    "welcome": "स्वागत है",
+    "loading": "लोड हो रहा है...",
+    "retry": "पुनः प्रयास करें",
+    "save": "सहेजें",
+    "cancel": "रद्द करें",
+    "language": "भाषा",
+    "english": "English",
+    "telugu": "తెలుగు",
+    "hindi": "हिन्दी",
+    "offlineNotice": "ऑफ़लाइन मोड सक्रिय है"
+  },
+  "tabs": {
+    "dashboard": "डैशबोर्ड",
+    "cases": "केस सूची",
+    "reminders": "रिमाइंडर",
+    "tokens": "टोकन",
+    "settings": "सेटिंग्स"
+  },
+  "dashboard": {
+    "title": "अधिवक्ता डैशबोर्ड",
+    "status": "सर्वर स्थिति",
+    "backendConnected": "सर्वर कनेक्टेड",
+    "backendDisconnected": "सर्वर डिस्कनेक्टेड",
+    "activeCases": "सक्रिय केस",
+    "todayHearings": "आज की सुनवाई",
+    "pendingReminders": "लंबित रिमाइंडर",
+    "displayBoard": "लाइव कोर्ट बोर्ड",
+    "voiceAssistant": "वॉयस केस खोज"
+  },
+  "cases": {
+    "title": "ट्रैक किए गए केस",
+    "searchPlaceholder": "केस प्रकार, संख्या या पक्षकार से खोजें...",
+    "empty": "अभी कोई केस ट्रैक नहीं किया जा रहा है।",
+    "addCase": "नया केस ट्रैक करें",
+    "details": "केस विवरण",
+    "hearings": "सुनवाई इतिहास",
+    "stage": "चरण",
+    "bench": "पीठ",
+    "nextHearing": "अगली सुनवाई"
+  },
+  "reminders": {
+    "title": "अनुपालन रिमाइंडर",
+    "empty": "कोई लंबित रिमाइंडर नहीं है।",
+    "addReminder": "रिमाइंडर जोड़ें"
+  },
+  "tokens": {
+    "title": "लाइव कोर्ट हॉल डिस्प्ले",
+    "empty": "वर्तमान में कोई कोर्ट हॉल लाइव नहीं है।",
+    "hall": "कोर्ट हॉल",
+    "item": "सक्रिय आइटम",
+    "distance": "आपके केस की दूरी"
+  },
+  "settings": {
+    "title": "प्राथमिकताएं और प्रोफाइल",
+    "profile": "अधिवक्ता प्रोफाइल",
+    "language": "भाषा चुनें",
+    "notifications": "पुश सूचनाएं",
+    "textToSpeech": "वॉयस रीडिंग",
+    "logout": "लॉग आउट"
+  },
+  "auth": {
+    "title": "अधिवक्ता पोर्टल",
+    "subtitle": "आंध्र प्रदेश उच्च न्यायालय",
+    "login": "साइन इन",
+    "enrollmentNumber": "बार काउंसिल नामांकन संख्या",
+    "enrollmentPlaceholder": "AP/1234/2020",
+    "password": "पासवर्ड",
+    "submitting": "प्रमाणीकरण जारी है...",
+    "invalidCredentials": "अमान्य नामांकन संख्या या पासवर्ड।"
+  }
+}

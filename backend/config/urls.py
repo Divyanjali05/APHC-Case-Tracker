@@ -4,6 +4,7 @@ from django.contrib import admin
 from django.db import connection
 from django.http import JsonResponse
 from django.urls import include, path
+from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
 
 def health_check(request):
@@ -29,9 +30,13 @@ def health_check(request):
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("api/health/", health_check, name="health-check"),
-    path("api/auth/", include("accounts.urls")),
-    path("api/cases/", include("cases.urls")),
-    path("api/reminders/", include("reminders.urls")),
-    path("api/tokens/", include("tokens.urls")),
-    path("api/notifications/", include("notifications.urls")),
+    # OpenAPI Schema & Documentation
+    path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
+    path("api/docs/", SpectacularSwaggerView.as_view(url_name="schema"), name="swagger-ui"),
+    # Core API Routers
+    path("api/auth/", include("apps.accounts.urls")),
+    path("api/cases/", include("apps.cases.urls")),
+    path("api/reminders/", include("apps.reminders.urls")),
+    path("api/tokens/", include("apps.tokens.urls")),
+    path("api/notifications/", include("apps.notifications.urls")),
 ]

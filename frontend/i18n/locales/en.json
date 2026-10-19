@@ -1,0 +1,75 @@
+{
+  "common": {
+    "appName": "APHC Case Tracker",
+    "courtName": "High Court of Andhra Pradesh",
+    "welcome": "Welcome",
+    "loading": "Loading...",
+    "retry": "Retry",
+    "save": "Save",
+    "cancel": "Cancel",
+    "language": "Language",
+    "english": "English",
+    "telugu": "తెలుగు",
+    "hindi": "हिन्दी",
+    "offlineNotice": "Offline Mode Active"
+  },
+  "tabs": {
+    "dashboard": "Dashboard",
+    "cases": "Cases",
+    "reminders": "Reminders",
+    "tokens": "Tokens",
+    "settings": "Settings"
+  },
+  "dashboard": {
+    "title": "Advocate Dashboard",
+    "status": "API Status",
+    "backendConnected": "Backend Connected",
+    "backendDisconnected": "Backend Disconnected",
+    "activeCases": "Active Cases",
+    "todayHearings": "Today's Hearings",
+    "pendingReminders": "Pending Reminders",
+    "displayBoard": "Live Court Board",
+    "voiceAssistant": "Voice Case Search"
+  },
+  "cases": {
+    "title": "My Tracked Cases",
+    "searchPlaceholder": "Search by Case Type, Number or Party...",
+    "empty": "No cases being tracked yet.",
+    "addCase": "Track New Case",
+    "details": "Case Details",
+    "hearings": "Hearing History",
+    "stage": "Stage",
+    "bench": "Bench",
+    "nextHearing": "Next Hearing"
+  },
+  "reminders": {
+    "title": "Compliance Reminders",
+    "empty": "No pending reminders.",
+    "addReminder": "Add Reminder"
+  },
+  "tokens": {
+    "title": "Live Court Hall Display",
+    "empty": "No active court hall boards currently broadcasting.",
+    "hall": "Court Hall",
+    "item": "Active Item",
+    "distance": "Distance to Your Case"
+  },
+  "settings": {
+    "title": "Preferences & Profile",
+    "profile": "Advocate Profile",
+    "language": "Select Language",
+    "notifications": "Push Notifications",
+    "textToSpeech": "Voice Reading",
+    "logout": "Sign Out"
+  },
+  "auth": {
+    "title": "Advocate Portal",
+    "subtitle": "High Court of Andhra Pradesh",
+    "login": "Sign In",
+    "enrollmentNumber": "Bar Council Enrollment Number",
+    "enrollmentPlaceholder": "AP/1234/2020",
+    "password": "Password",
+    "submitting": "Authenticating...",
+    "invalidCredentials": "Invalid enrollment number or password."
+  }
+}

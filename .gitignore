@@ -46,12 +46,14 @@ coverage.xml
 
 # Node & Expo / React Native
 node_modules/
+frontend/node_modules/
 mobile/node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 .expo/
+frontend/.expo/
 mobile/.expo/
 web-build/
 dist/
