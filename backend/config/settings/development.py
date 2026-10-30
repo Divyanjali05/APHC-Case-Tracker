@@ -5,6 +5,7 @@ from .base import *  # noqa: F403
 from .base import BASE_DIR
 
 DEBUG = True
+ALLOWED_HOSTS = ["*"]
 
 # Database: PostgreSQL if DATABASE_URL provided, else local SQLite
 DATABASE_URL = os.getenv("DATABASE_URL")
