@@ -1,0 +1,88 @@
+name: Backend CI
+
+'on':
+  push:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'backend/**'
+      - '.github/workflows/backend-ci.yml'
+      - 'docker-compose.yml'
+  pull_request:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'backend/**'
+      - '.github/workflows/backend-ci.yml'
+      - 'docker-compose.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend-test:
+    name: Django & Pytest Suite
+    runs-on: ubuntu-latest
+
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    defaults:
+      run:
+        working-directory: backend
+
+    env:
+      DJANGO_SETTINGS_MODULE: config.settings.development
+      DJANGO_SECRET_KEY: django-insecure-aphc-ci-automation-test-key-32chars
+      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1,testserver
+      CELERY_BROKER_URL: redis://localhost:6379/0
+      CELERY_RESULT_BACKEND: redis://localhost:6379/1
+      REDIS_URL: redis://localhost:6379/0
+      PYTHONUNBUFFERED: "1"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Verify Redis service connectivity
+        run: |
+          python -c "import redis; client = redis.Redis.from_url('redis://localhost:6379/0'); assert client.ping(), 'Redis ping failed'"
+
+      - name: Run Django system checks
+        run: python manage.py check
+
+      - name: Verify database migration consistency
+        run: python manage.py makemigrations --check --dry-run
+
+      - name: Run Ruff code quality check
+        run: ruff check .
+
+      - name: Execute pytest test suite
+        run: pytest -rs -q --disable-warnings
