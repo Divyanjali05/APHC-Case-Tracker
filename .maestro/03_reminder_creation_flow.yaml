@@ -1,0 +1,89 @@
+appId: com.aphc.casetracker
+name: Reminder Creation and Listing E2E Flow
+---
+# 1. Launch App and Open Reminders
+- launchApp
+- runFlow:
+    when:
+      visible:
+        id: "case-detail-screen"
+    commands:
+      - back
+
+- runFlow:
+    when:
+      visible:
+        id: "login-screen"
+    commands:
+      - tapOn:
+          id: "enrollment-input"
+      - eraseText: 50
+      - inputText: ${TEST_USER_ENROLLMENT}
+      - tapOn:
+          id: "password-input"
+      - eraseText: 50
+      - inputText: ${TEST_USER_PASSWORD}
+      - hideKeyboard
+      - scrollUntilVisible:
+          element:
+            id: "login-submit-button"
+          direction: DOWN
+      - tapOn:
+          id: "login-submit-button"
+
+- tapOn:
+    id: "tab-reminders"
+
+# 2. Switch to Compliance Diary Tab
+- tapOn:
+    id: "tab-compliance-reminders"
+- assertVisible:
+    id: "new-reminder-button"
+
+# 3. Open Create Reminder Modal
+- tapOn:
+    id: "new-reminder-button"
+- assertVisible:
+    id: "create-reminder-heading"
+- assertVisible:
+    id: "reminder-title-input"
+- assertVisible:
+    id: "reminder-due-date-input"
+
+# 4. Fill in Reminder Details
+- tapOn:
+    id: "reminder-title-input"
+- eraseText: 50
+- inputText: "File Counter in Writ Petition"
+- tapOn:
+    id: "reminder-description-input"
+- eraseText: 50
+- inputText: "Prepare counter affidavit before preliminary hearing"
+- tapOn:
+    id: "reminder-due-date-input"
+- eraseText: 50
+- inputText: "2026-11-20"
+- tapOn:
+    id: "reminder-type-filing"
+
+# 5. Submit Reminder
+- scrollUntilVisible:
+    element:
+      id: "reminder-submit-btn"
+    direction: DOWN
+- tapOn:
+    id: "reminder-submit-btn"
+
+# 6. Verify Reminder Appears in the List
+- assertNotVisible:
+    id: "create-reminder-heading"
+- assertVisible:
+    text: "File Counter in Writ Petition"
+- assertVisible:
+    text: ".*Pending.*"
+
+# 7. Dismiss Reminder
+- tapOn:
+    text: ".*Mark Done.*"
+- assertVisible:
+    text: ".*Completed.*"

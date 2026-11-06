@@ -19,3 +19,37 @@ export const formatDate = (dateString?: string): string => {
     return dateString;
   }
 };
+
+export const formatTime = (dateString?: string): string => {
+  if (!dateString) return '';
+  try {
+    const d = new Date(dateString);
+    return d.toLocaleTimeString('en-IN', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    });
+  } catch {
+    return '';
+  }
+};
+
+export const formatDateTime = (dateString?: string): string => {
+  if (!dateString) return '—';
+  try {
+    const d = new Date(dateString);
+    const datePart = d.toLocaleDateString('en-IN', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+    });
+    const timePart = d.toLocaleTimeString('en-IN', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    });
+    return `${datePart}, ${timePart}`;
+  } catch {
+    return dateString;
+  }
+};

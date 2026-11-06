@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
@@ -8,6 +8,7 @@ import { Card } from '../../components/common/Card';
 import { Badge } from '../../components/common/Badge';
 import { Button } from '../../components/common/Button';
 import { StatCard } from '../../components/dashboard/StatCard';
+import { VoiceInputModal } from '../../components/speech/VoiceInputModal';
 import { Colors } from '../../constants/colors';
 import { fetchHealthCheck } from '../../services/api/client';
 import { speechService } from '../../services/speech/ttsService';
@@ -15,6 +16,7 @@ import { speechService } from '../../services/speech/ttsService';
 export default function DashboardScreen() {
   const { t, i18n } = useTranslation();
   const router = useRouter();
+  const [isVoiceModalVisible, setIsVoiceModalVisible] = useState(false);
 
   const {
     data: health,
@@ -73,11 +75,18 @@ export default function DashboardScreen() {
 
           <View style={styles.voiceRow}>
             <Button
-              title="Read Court Docket Summary"
+              title="Read Docket Summary"
               variant="outline"
               onPress={handleVoiceWelcome}
               style={styles.voiceButton}
               testID="voice-read-button"
+            />
+            <Button
+              title={`🎤 ${t('dashboard.voiceAssistant', 'Voice Case Search')}`}
+              variant="secondary"
+              onPress={() => setIsVoiceModalVisible(true)}
+              style={styles.voiceButton}
+              testID="dashboard-voice-search-button"
             />
           </View>
         </Card>
@@ -165,6 +174,17 @@ export default function DashboardScreen() {
           />
         </Card>
       </ScrollView>
+
+      {/* Voice Assistant Search Modal */}
+      <VoiceInputModal
+        visible={isVoiceModalVisible}
+        onClose={() => setIsVoiceModalVisible(false)}
+        onApply={query => {
+          setIsVoiceModalVisible(false);
+          router.push({ pathname: '/cases', params: { search: query } });
+        }}
+        title={t('dashboard.voiceAssistant', 'Voice Case Search')}
+      />
     </ScreenContainer>
   );
 }
@@ -216,9 +236,12 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   voiceRow: {
-    marginTop: 4,
+    marginTop: 8,
+    flexDirection: 'row',
+    gap: 8,
   },
   voiceButton: {
+    flex: 1,
     paddingVertical: 10,
   },
   statsGrid: {

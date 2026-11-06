@@ -21,13 +21,23 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0F172A"
       },
-      "package": "com.aphc.casetracker"
+      "package": "com.aphc.casetracker",
+      "allowBackup": false
     },
     "web": {
       "favicon": "./assets/favicon.png",
       "bundler": "metro"
     },
-    "plugins": ["expo-router"],
+    "plugins": [
+      "expo-router",
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Allow APHC Case Tracker to access your microphone for voice case search.",
+          "speechRecognitionPermission": "Allow APHC Case Tracker to transcribe case queries and appearance notes."
+        }
+      ]
+    ],
     "experiments": {
       "typedRoutes": true
     }

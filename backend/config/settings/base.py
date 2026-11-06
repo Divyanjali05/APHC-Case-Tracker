@@ -40,6 +40,7 @@ DJANGO_APPS = [
 THIRD_PARTY_APPS = [
     "rest_framework",
     "rest_framework_simplejwt",
+    "rest_framework_simplejwt.token_blacklist",
     "corsheaders",
     "drf_spectacular",
 ]
@@ -50,6 +51,7 @@ LOCAL_APPS = [
     "apps.reminders.apps.RemindersConfig",
     "apps.tokens.apps.TokensConfig",
     "apps.notifications.apps.NotificationsConfig",
+    "apps.court_data.apps.CourtDataConfig",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -113,7 +115,19 @@ REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
         "rest_framework_simplejwt.authentication.JWTAuthentication",
     ),
-    "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticatedOrReadOnly",),
+    "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
+    "DEFAULT_THROTTLE_CLASSES": (
+        "rest_framework.throttling.AnonRateThrottle",
+        "rest_framework.throttling.UserRateThrottle",
+    ),
+    "DEFAULT_THROTTLE_RATES": {
+        "anon": "100/day",
+        "user": "1000/day",
+        "auth": "10/minute",
+        "refresh": "20/minute",
+        "password_reset_request": "5/minute",
+        "password_reset_confirm": "5/minute",
+    },
     "DEFAULT_PAGINATION_CLASS": "common.pagination.StandardResultsSetPagination",
     "PAGE_SIZE": 20,
     "EXCEPTION_HANDLER": "common.exceptions.custom_exception_handler",
@@ -130,7 +144,7 @@ SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=JWT_ACCESS_MINUTES),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=JWT_REFRESH_DAYS),
     "ROTATE_REFRESH_TOKENS": True,
-    "BLACKLIST_AFTER_ROTATION": False,
+    "BLACKLIST_AFTER_ROTATION": True,
     "SIGNING_KEY": JWT_SECRET_KEY,
     "AUTH_HEADER_TYPES": ("Bearer",),
 }
@@ -142,6 +156,25 @@ CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = TIME_ZONE
+CELERY_BEAT_SCHEDULE = {
+    "check-due-reminders-every-15-minutes": {
+        "task": "reminders.check_and_send_due_reminders",
+        "schedule": 900.0,
+    },
+    "sync-tracked-case-statuses-every-5-minutes": {
+        "task": "court_data.sync_tracked_case_statuses",
+        "schedule": 300.0,
+    },
+    "retry-failed-push-notifications-every-5-minutes": {
+        "task": "notifications.retry_failed_push_notifications",
+        "schedule": 300.0,
+    },
+    "prune-realtime-events-daily": {
+        "task": "notifications.prune_realtime_events",
+        "schedule": 86400.0,
+    },
+}
+
 
 # OpenAPI / Spectacular
 SPECTACULAR_SETTINGS = {

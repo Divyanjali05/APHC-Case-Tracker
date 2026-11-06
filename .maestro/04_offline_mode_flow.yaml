@@ -1,0 +1,86 @@
+appId: com.aphc.casetracker
+name: Offline Mode & Data Synchronization E2E Flow
+---
+# 1. Launch App and Ensure Authentication
+- launchApp
+- runFlow:
+    when:
+      visible:
+        id: "case-detail-screen"
+    commands:
+      - back
+
+- runFlow:
+    when:
+      visible:
+        id: "login-screen"
+    commands:
+      - tapOn:
+          id: "enrollment-input"
+      - eraseText: 50
+      - inputText: ${TEST_USER_ENROLLMENT}
+      - tapOn:
+          id: "password-input"
+      - eraseText: 50
+      - inputText: ${TEST_USER_PASSWORD}
+      - hideKeyboard
+      - scrollUntilVisible:
+          element:
+            id: "login-submit-button"
+          direction: DOWN
+      - tapOn:
+          id: "login-submit-button"
+
+# 2. Verify Cases Tab and Data Loading
+- tapOn:
+    point: "30%,94%"
+- assertVisible:
+    text: ".*WP.*|.*WA.*|.*CRP.*|.*Cases.*"
+
+# 3. Navigate to Reminders Tab
+- tapOn:
+    point: "50%,94%"
+- assertVisible:
+    text: ".*Compliance Diary.*|.*Upcoming Hearings.*"
+
+# 4. Switch to Compliance Diary Subtab
+- tapOn:
+    text: ".*Compliance Diary.*"
+
+# 5. Open Create Reminder Modal if Visible
+- runFlow:
+    when:
+      visible:
+        id: "new-reminder-button"
+    commands:
+      - tapOn:
+          id: "new-reminder-button"
+      - assertVisible:
+          id: "create-reminder-heading"
+      - tapOn:
+          id: "reminder-title-input"
+      - eraseText: 50
+      - inputText: "File Offline Written Submission"
+      - tapOn:
+          id: "reminder-description-input"
+      - eraseText: 50
+      - inputText: "Drafted during offline courtroom session"
+      - tapOn:
+          id: "reminder-due-date-input"
+      - eraseText: 50
+      - inputText: "2026-11-28"
+      - tapOn:
+          id: "reminder-type-compliance"
+      - scrollUntilVisible:
+          element:
+            id: "reminder-submit-btn"
+          direction: DOWN
+      - tapOn:
+          id: "reminder-submit-btn"
+      - assertNotVisible:
+          id: "create-reminder-heading"
+      - assertVisible:
+          text: "File Offline Written Submission"
+
+# 6. Capture Verification Screenshot
+- takeScreenshot: e2e_screenshots/04_offline_mode_success

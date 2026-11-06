@@ -14,6 +14,7 @@ const defaultLocale = process.env.EXPO_PUBLIC_DEFAULT_LOCALE || 'en';
 
 if (!i18n.isInitialized) {
   i18n.use(initReactI18next).init({
+    compatibilityJSON: 'v3',
     resources,
     lng: defaultLocale,
     fallbackLng: 'en',

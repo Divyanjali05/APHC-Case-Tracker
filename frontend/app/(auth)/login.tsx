@@ -7,6 +7,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  TouchableOpacity,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
@@ -47,6 +48,11 @@ export default function LoginScreen() {
 
       if (response.data?.access && response.data?.refresh) {
         await tokenStorage.saveTokens(response.data.access, response.data.refresh);
+        if (typeof tokenStorage.saveUserEnrollment === 'function') {
+          await tokenStorage.saveUserEnrollment(
+            data.enrollmentNumber.trim().toUpperCase()
+          );
+        }
         router.replace('/(tabs)');
       }
     } catch {
@@ -121,6 +127,14 @@ export default function LoginScreen() {
               <Text style={styles.fieldError}>{errors.password.message}</Text>
             ) : null}
 
+            <TouchableOpacity
+              onPress={() => router.push('/(auth)/forgot-password')}
+              style={styles.forgotPasswordContainer}
+              testID="forgot-password-link"
+            >
+              <Text style={styles.forgotPasswordText}>{t('auth.forgotPassword')}</Text>
+            </TouchableOpacity>
+
             <Button
               title={isSubmitting ? t('auth.submitting') : t('auth.login')}
               onPress={handleSubmit(onSubmit)}
@@ -129,13 +143,15 @@ export default function LoginScreen() {
               testID="login-submit-button"
             />
 
-            <Button
-              title="Return to Dashboard (Demo Mode)"
-              variant="outline"
-              onPress={() => router.replace('/(tabs)')}
-              style={styles.demoButton}
-              testID="demo-skip-button"
-            />
+            {(__DEV__ || process.env.EXPO_PUBLIC_ENABLE_DEMO === 'true') && (
+              <Button
+                title="Return to Dashboard (Demo Mode)"
+                variant="outline"
+                onPress={() => router.replace('/(tabs)')}
+                style={styles.demoButton}
+                testID="demo-skip-button"
+              />
+            )}
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -221,5 +237,15 @@ const styles = StyleSheet.create({
   },
   demoButton: {
     marginTop: 12,
+  },
+  forgotPasswordContainer: {
+    alignSelf: 'flex-end',
+    marginTop: 8,
+    paddingVertical: 4,
+  },
+  forgotPasswordText: {
+    color: Colors.primaryLight,
+    fontSize: 13,
+    fontWeight: '600',
   },
 });

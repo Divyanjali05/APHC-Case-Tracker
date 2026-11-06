@@ -1,0 +1,66 @@
+appId: com.aphc.casetracker
+name: Cases Table E2E Flow
+---
+# 1. Launch App
+- launchApp
+
+# 2. Authenticate if on login screen
+- runFlow:
+    when:
+      visible:
+        id: "login-screen"
+    commands:
+      - tapOn:
+          id: "enrollment-input"
+      - eraseText: 50
+      - inputText: ${TEST_USER_ENROLLMENT}
+      - tapOn:
+          id: "password-input"
+      - eraseText: 50
+      - inputText: ${TEST_USER_PASSWORD}
+      - hideKeyboard
+      - scrollUntilVisible:
+          element:
+            id: "login-submit-button"
+          direction: DOWN
+      - tapOn:
+          id: "login-submit-button"
+
+# 3. Assert Cases Screen Display
+- tapOn:
+    id: "tab-cases"
+- assertVisible:
+    id: "cases-screen"
+
+# 4. Verify Case Card Elements (Case Name, Hearing Date, Status, Judgment)
+- assertVisible:
+    id: "case-card-.*"
+- assertVisible:
+    id: "case-name-.*"
+- assertVisible:
+    id: "case-status-badge-.*"
+
+# 5. Search Filtering
+- tapOn:
+    id: "cases-search-input"
+- inputText: "WP"
+- hideKeyboard
+- assertVisible:
+    id: "case-card-.*"
+
+# 6. Filter Chips Interaction
+- tapOn: "Upcoming"
+- tapOn: "With Judgment"
+- tapOn: "All"
+
+# 7. Pull to Refresh
+- scrollUntilVisible:
+    element:
+      id: "cases-list"
+    direction: DOWN
+
+# 8. Navigate to Case Detail Screen
+- tapOn:
+    id: "case-card-.*"
+- assertVisible:
+    id: "case-detail-screen"

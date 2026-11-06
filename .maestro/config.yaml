@@ -1,0 +1,11 @@
+appId: com.aphc.casetracker
+name: APHC Case Tracker E2E Test Suite
+tags:
+  - e2e
+  - regression
+  - mobile
+env:
+  TEST_USER_ENROLLMENT: "AP/8888/2021"
+  TEST_USER_PASSWORD: "ValidPassword123!"
+  INVALID_ENROLLMENT: "AP/0000/2020"
+  INVALID_PASSWORD: "WrongPassword999!"

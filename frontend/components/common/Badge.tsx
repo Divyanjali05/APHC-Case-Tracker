@@ -3,12 +3,13 @@ import { View, Text, StyleSheet } from 'react-native';
 
 export interface BadgeProps {
   label: string;
-  variant?: 'primary' | 'success' | 'warning' | 'gold' | 'danger';
+  variant?: 'primary' | 'success' | 'warning' | 'gold' | 'danger' | 'info' | 'secondary';
+  testID?: string;
 }
 
-export const Badge: React.FC<BadgeProps> = ({ label, variant = 'primary' }) => {
+export const Badge: React.FC<BadgeProps> = ({ label, variant = 'primary', testID }) => {
   return (
-    <View style={[styles.badge, styles[variant]]}>
+    <View style={[styles.badge, styles[variant]]} testID={testID}>
       <Text style={[styles.text, styles[`${variant}Text` as keyof typeof styles]]}>
         {label}
       </Text>
@@ -38,6 +39,12 @@ const styles = StyleSheet.create({
   danger: {
     backgroundColor: '#7F1D1D',
   },
+  info: {
+    backgroundColor: '#0C4A6E',
+  },
+  secondary: {
+    backgroundColor: '#374151',
+  },
   text: {
     fontSize: 11,
     fontWeight: '700',
@@ -57,5 +64,11 @@ const styles = StyleSheet.create({
   },
   dangerText: {
     color: '#FCA5A5',
+  },
+  infoText: {
+    color: '#7DD3FC',
+  },
+  secondaryText: {
+    color: '#D1D5DB',
   },
 });

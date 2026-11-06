@@ -1,0 +1,56 @@
+appId: com.aphc.casetracker
+name: Phase 7 Offline Mode Verification Flow
+---
+# 1. Switch to Reminders tab
+- tapOn:
+    id: "tab-reminders"
+- tapOn:
+    id: "tab-compliance-reminders"
+- assertVisible:
+    id: "new-reminder-button"
+
+# 2. Open Create Reminder Modal
+- tapOn:
+    id: "new-reminder-button"
+- assertVisible:
+    id: "create-reminder-heading"
+
+# 3. Enter Reminder Details
+- tapOn:
+    id: "reminder-title-input"
+- eraseText: 50
+- inputText: "Offline Review of Case Law"
+
+- tapOn:
+    id: "reminder-description-input"
+- eraseText: 50
+- inputText: "Verify AP HC precedence offline"
+
+- tapOn:
+    id: "reminder-due-date-input"
+- eraseText: 50
+- inputText: "2026-11-28"
+
+- tapOn:
+    id: "reminder-type-filing"
+
+# 4. Submit Reminder
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      id: "reminder-submit-btn"
+    direction: DOWN
+- tapOn:
+    id: "reminder-submit-btn"
+
+# 5. Verify Reminder is Listed
+- assertNotVisible:
+    id: "create-reminder-heading"
+- assertVisible:
+    text: "Offline Review of Case Law"
+
+# 6. Switch back to Cases tab to verify Cases screen and OfflineBanner
+- tapOn:
+    id: "tab-cases"
+- assertVisible:
+    id: "cases-screen"

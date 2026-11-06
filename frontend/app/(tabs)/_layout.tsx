@@ -32,6 +32,7 @@ export default function TabLayout() {
         name="index"
         options={{
           title: t('tabs.dashboard'),
+          tabBarTestID: 'tab-dashboard',
           tabBarLabel: ({ color }) => (
             <Text style={[styles.tabLabel, { color }]}>{t('tabs.dashboard')}</Text>
           ),
@@ -42,6 +43,7 @@ export default function TabLayout() {
         name="cases"
         options={{
           title: t('tabs.cases'),
+          tabBarTestID: 'tab-cases',
           tabBarLabel: ({ color }) => (
             <Text style={[styles.tabLabel, { color }]}>{t('tabs.cases')}</Text>
           ),
@@ -52,6 +54,7 @@ export default function TabLayout() {
         name="reminders"
         options={{
           title: t('tabs.reminders'),
+          tabBarTestID: 'tab-reminders',
           tabBarLabel: ({ color }) => (
             <Text style={[styles.tabLabel, { color }]}>{t('tabs.reminders')}</Text>
           ),
@@ -62,6 +65,7 @@ export default function TabLayout() {
         name="tokens"
         options={{
           title: t('tabs.tokens'),
+          tabBarTestID: 'tab-tokens',
           tabBarLabel: ({ color }) => (
             <Text style={[styles.tabLabel, { color }]}>{t('tabs.tokens')}</Text>
           ),
@@ -72,6 +76,7 @@ export default function TabLayout() {
         name="settings"
         options={{
           title: t('tabs.settings'),
+          tabBarTestID: 'tab-settings',
           tabBarLabel: ({ color }) => (
             <Text style={[styles.tabLabel, { color }]}>{t('tabs.settings')}</Text>
           ),

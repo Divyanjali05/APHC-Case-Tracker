@@ -15,7 +15,7 @@ import { Card } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
 import { Badge } from '../../components/common/Badge';
 import { Colors } from '../../constants/colors';
-import { tokenStorage } from '../../services/auth/tokenStorage';
+import { authService } from '../../services/auth/authService';
 import { speechService } from '../../services/speech/ttsService';
 
 export default function SettingsScreen() {
@@ -45,7 +45,7 @@ export default function SettingsScreen() {
           text: t('settings.logout'),
           style: 'destructive',
           onPress: async () => {
-            await tokenStorage.clearTokens();
+            await authService.logout();
             router.replace('/(auth)/login');
           },
         },

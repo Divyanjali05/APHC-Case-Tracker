@@ -36,3 +36,14 @@ CORS_ALLOW_CREDENTIALS = True
 
 # Console email backend for development
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+
+# Execute Celery tasks synchronously in development and automated testing
+CELERY_TASK_ALWAYS_EAGER = True
+
+# Development cache: local in-memory cache for single-process development and automated testing
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "aphc-development-cache",
+    }
+}

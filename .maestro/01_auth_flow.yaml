@@ -1,0 +1,77 @@
+appId: com.aphc.casetracker
+name: Authentication E2E Flow
+---
+# 1. Launch Application
+- launchApp
+
+# 1.1 Ensure Logged-Out State for Auth Flow
+- runFlow:
+    when:
+      notVisible:
+        id: "login-screen"
+    commands:
+      - tapOn: "Settings"
+      - scrollUntilVisible:
+          element:
+            id: "settings-logout-button"
+          direction: DOWN
+      - tapOn:
+          id: "settings-logout-button"
+      - tapOn: "Sign Out"
+
+# 2. Assert Login Screen Is Visible
+- assertVisible:
+    id: "login-screen"
+- assertVisible:
+    id: "enrollment-input"
+- assertVisible:
+    id: "password-input"
+- assertVisible:
+    id: "login-submit-button"
+
+# 3. Test Empty Credentials Submission
+- tapOn:
+    id: "login-submit-button"
+- assertVisible:
+    text: ".*[eE]nrollment [nN]umber is required.*"
+
+# 4. Test Invalid Credentials Rejection
+- tapOn:
+    id: "enrollment-input"
+- eraseText: 50
+- inputText: ${INVALID_ENROLLMENT}
+- tapOn:
+    id: "password-input"
+- eraseText: 50
+- inputText: ${INVALID_PASSWORD}
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      id: "login-submit-button"
+    direction: DOWN
+- tapOn:
+    id: "login-submit-button"
+- assertVisible:
+    text: ".*Invalid.*"
+
+# 5. Test Successful Authentication with Valid Test Account
+- tapOn:
+    id: "enrollment-input"
+- eraseText: 50
+- inputText: ${TEST_USER_ENROLLMENT}
+- tapOn:
+    id: "password-input"
+- eraseText: 50
+- inputText: ${TEST_USER_PASSWORD}
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      id: "login-submit-button"
+    direction: DOWN
+- tapOn:
+    id: "login-submit-button"
+
+# 6. Verify Dashboard / Cases Screen Reached
+- tapOn: "Cases"
+- assertVisible:
+    id: "cases-screen"

@@ -39,4 +39,5 @@ urlpatterns = [
     path("api/reminders/", include("apps.reminders.urls")),
     path("api/tokens/", include("apps.tokens.urls")),
     path("api/notifications/", include("apps.notifications.urls")),
+    path("api/court-status/", include("apps.court_data.urls")),
 ]

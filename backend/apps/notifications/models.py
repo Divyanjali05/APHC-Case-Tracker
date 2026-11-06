@@ -1,3 +1,5 @@
+import uuid
+
 from django.conf import settings
 from django.db import models
 
@@ -34,6 +36,8 @@ class NotificationHistory(models.Model):
         ("CAUSELIST", "Cause List Listing"),
         ("TOKEN_ALERT", "Court Hall Token Alert"),
         ("REMINDER", "Compliance Deadline Reminder"),
+        ("JUDGMENT", "Judgment & Orders"),
+        ("HEARING_CHANGE", "Hearing Changes"),
         ("GENERAL", "General Announcement"),
     )
 
@@ -54,3 +58,43 @@ class NotificationHistory(models.Model):
 
     def __str__(self):
         return f"{self.user.username} - {self.title}"
+
+
+class RealtimeEvent(models.Model):
+    """Authoritative event log for in-app real-time synchronization.
+
+    Provides monotonic cursor-based event replay for missed events, reconnects,
+    and offline client catch-up with strict advocate data isolation.
+    """
+
+    EVENT_TYPES = (
+        ("COURT_TOKEN_UPDATED", "Court Token Updated"),
+        ("HEARING_RESCHEDULED", "Hearing Rescheduled"),
+        ("HEARING_CHANGED", "Hearing Changed"),
+        ("JUDGMENT_PRONOUNCED", "Judgment Pronounced"),
+        ("JUDGMENT_DOCUMENT_UPLOADED", "Judgment Document Uploaded"),
+        ("REMINDER_DUE", "Hearing Reminder Due"),
+        ("NOTIFICATION_CREATED", "New Notification Archived"),
+        ("NOTIFICATION_READ", "Notification Marked Read"),
+    )
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="realtime_events",
+        db_index=True,
+    )
+    event_type = models.CharField(max_length=50, choices=EVENT_TYPES, db_index=True)
+    event_uuid = models.UUIDField(default=uuid.uuid4, unique=True, db_index=True)
+    payload = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ["id"]
+        indexes = [
+            models.Index(fields=["user", "id"]),
+            models.Index(fields=["user", "created_at"]),
+        ]
+
+    def __str__(self):
+        return f"[{self.id}] {self.user.username} - {self.event_type} ({self.created_at})"
