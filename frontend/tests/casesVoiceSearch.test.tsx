@@ -21,6 +21,21 @@ jest.mock('expo-router', () => ({
 
 jest.mock('../features/cases/hooks', () => ({
   useCases: jest.fn(),
+  useDashboard: jest.fn().mockReturnValue({
+    data: {
+      summary: { total_cases: 0, pending_cases: 0, disposed_cases: 0, adjourned_cases: 0 },
+      today_hearings: [],
+      upcoming_hearings: [],
+      upcoming_reminders: [],
+      recent_notifications: [],
+      sync_status: { last_synced_at: null, is_fresh: false, status: 'NEVER_SYNCED' },
+      isOfflineCached: false,
+    },
+    isLoading: false,
+    isError: false,
+    refetch: jest.fn(),
+    isRefetching: false,
+  }),
 }));
 
 jest.mock('../services/api/client', () => ({

@@ -3,6 +3,8 @@ from django.db import models
 
 from common.validators import validate_case_year
 
+from .storage import case_document_upload_path, secure_document_storage
+
 
 class Case(models.Model):
     """Core Case model for tracking matters at the Andhra Pradesh High Court."""
@@ -172,3 +174,77 @@ class CaseHistory(models.Model):
 
     def __str__(self):
         return f"{self.case} - {self.event_type} ({self.created_at.strftime('%Y-%m-%d %H:%M')})"
+
+
+class CaseDocument(models.Model):
+    """Case-specific document stored securely outside public static/media directories."""
+
+    CATEGORY_CHOICES = (
+        ("PETITION", "Petition"),
+        ("COUNTER_AFFIDAVIT", "Counter Affidavit"),
+        ("REJOINDER", "Rejoinder"),
+        ("JUDGMENT", "Judgment"),
+        ("COURT_ORDER", "Court Order"),
+        ("WRITTEN_SUBMISSIONS", "Written Submissions"),
+        ("EVIDENCE", "Evidence"),
+        ("SUPPORTING_DOCUMENTS", "Supporting Documents"),
+        ("OTHER", "Other"),
+    )
+
+    case = models.ForeignKey(Case, on_delete=models.CASCADE, related_name="documents")
+    uploaded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="uploaded_case_documents",
+    )
+    title = models.CharField(max_length=255)
+    document_type = models.CharField(
+        max_length=30, choices=CATEGORY_CHOICES, default="OTHER", db_index=True
+    )
+    description = models.TextField(blank=True, default="")
+    original_filename = models.CharField(max_length=255)
+    file_size = models.PositiveIntegerField(help_text="File size in bytes")
+    mime_type = models.CharField(max_length=100)
+    file = models.FileField(
+        upload_to=case_document_upload_path,
+        storage=secure_document_storage,
+    )
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["case", "-created_at"]),
+            models.Index(fields=["uploaded_by", "-created_at"]),
+            models.Index(fields=["case", "document_type"]),
+        ]
+
+    def __str__(self):
+        return f"{self.title} ({self.get_document_type_display()}) - Case {self.case_id}"
+
+
+class CaseNote(models.Model):
+    """Private advocate preparation note linked to an authorized tracked case."""
+
+    case = models.ForeignKey(Case, on_delete=models.CASCADE, related_name="notes")
+    advocate = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="case_notes",
+    )
+    title = models.CharField(max_length=255)
+    content = models.TextField()
+    is_pinned = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True, db_index=True)
+
+    class Meta:
+        ordering = ["-is_pinned", "-updated_at"]
+        indexes = [
+            models.Index(fields=["case", "advocate", "-updated_at"]),
+            models.Index(fields=["advocate", "-updated_at"]),
+        ]
+
+    def __str__(self):
+        return f"Note: {self.title} (Advocate: {self.advocate_id}, Case: {self.case_id})"

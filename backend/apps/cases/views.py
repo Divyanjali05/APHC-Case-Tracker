@@ -1,4 +1,7 @@
+import os
+
 from django.db.models import Q
+from django.http import FileResponse, HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import generics, permissions, status
@@ -9,16 +12,22 @@ from rest_framework.views import APIView
 from apps.notifications.services import NotificationService
 from apps.reminders.services import ReminderService
 
+from .export_service import CaseCsvExportService, CasePdfExportService
 from .history_service import CaseHistoryService
-from .models import Case, CaseHistory, Hearing, Judgment
+from .models import Case, CaseDocument, CaseHistory, CaseNote, Hearing, Judgment
 from .query_normalizer import normalize_voice_query_py
 from .serializers import (
+    CaseDocumentSerializer,
+    CaseDocumentUploadSerializer,
     CaseHistorySerializer,
+    CaseNoteSerializer,
     CaseSerializer,
+    DashboardResponseSerializer,
     HearingRescheduleSerializer,
     HearingSerializer,
     JudgmentSerializer,
 )
+from .services import DashboardService
 
 
 class CaseListCreateView(generics.ListCreateAPIView):
@@ -273,6 +282,17 @@ class JudgmentDocumentView(APIView):
         )
 
 
+class DashboardView(APIView):
+    """Consolidated summary statistics and court activity dashboard for authenticated advocate."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        dashboard_data = DashboardService.get_dashboard_data(request.user)
+        serializer = DashboardResponseSerializer(dashboard_data)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
 class CasesStatusView(APIView):
     """Health / readiness probe for cases app."""
 
@@ -517,3 +537,240 @@ class VoiceQueryNormalizeView(APIView):
         q = request.query_params.get("q", "").strip()
         result = normalize_voice_query_py(q)
         return Response(result, status=status.HTTP_200_OK)
+
+
+class CaseDocumentListCreateView(APIView):
+    """List documents for a tracked case or securely upload a new document."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_case(self, case_id):
+        return get_object_or_404(Case, id=case_id, tracked_by=self.request.user)
+
+    def get(self, request, case_id):
+        case = self.get_case(case_id)
+        docs = CaseDocument.objects.filter(case=case).select_related("uploaded_by")
+        category = request.query_params.get("category", "").strip().upper()
+        if category:
+            docs = docs.filter(document_type=category)
+        serializer = CaseDocumentSerializer(docs, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def post(self, request, case_id):
+        case = self.get_case(case_id)
+        serializer = CaseDocumentUploadSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        uploaded_file = serializer.validated_data["file"]
+        title = serializer.validated_data.get("title") or os.path.basename(uploaded_file.name)
+        document_type = serializer.validated_data.get("document_type", "OTHER")
+        description = serializer.validated_data.get("description", "")
+        mime_type = getattr(uploaded_file, "detected_mime_type", "application/octet-stream")
+
+        doc = CaseDocument.objects.create(
+            case=case,
+            uploaded_by=request.user,
+            title=title,
+            document_type=document_type,
+            description=description,
+            original_filename=os.path.basename(uploaded_file.name or "document"),
+            file_size=uploaded_file.size,
+            mime_type=mime_type,
+            file=uploaded_file,
+        )
+
+        CaseHistoryService.record_event(
+            case=case,
+            event_type="DOCUMENT_UPDATED",
+            description=f"Document uploaded: {doc.title} ({doc.get_document_type_display()})",
+            changed_by=request.user,
+            source="MANUAL",
+        )
+
+        return Response(CaseDocumentSerializer(doc).data, status=status.HTTP_201_CREATED)
+
+
+class CaseDocumentDetailView(APIView):
+    """Retrieve metadata, update metadata, or delete a case document."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_document(self, case_id, pk):
+        return get_object_or_404(
+            CaseDocument.objects.select_related("case", "uploaded_by"),
+            id=pk,
+            case_id=case_id,
+            case__tracked_by=self.request.user,
+        )
+
+    def get(self, request, case_id, pk):
+        doc = self.get_document(case_id, pk)
+        return Response(CaseDocumentSerializer(doc).data, status=status.HTTP_200_OK)
+
+    def patch(self, request, case_id, pk):
+        doc = self.get_document(case_id, pk)
+        serializer = CaseDocumentSerializer(doc, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        updated_doc = serializer.save()
+
+        CaseHistoryService.record_event(
+            case=doc.case,
+            event_type="DOCUMENT_UPDATED",
+            description=f"Document metadata updated: {updated_doc.title}",
+            changed_by=request.user,
+            source="MANUAL",
+        )
+
+        return Response(CaseDocumentSerializer(updated_doc).data, status=status.HTTP_200_OK)
+
+    def delete(self, request, case_id, pk):
+        doc = self.get_document(case_id, pk)
+        case = doc.case
+        title = doc.title
+        if doc.file:
+            doc.file.delete(save=False)
+        doc.delete()
+
+        CaseHistoryService.record_event(
+            case=case,
+            event_type="DOCUMENT_UPDATED",
+            description=f"Document deleted: {title}",
+            changed_by=request.user,
+            source="MANUAL",
+        )
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class CaseDocumentDownloadView(APIView):
+    """Authorized file download streaming endpoint with strict access control."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, case_id, pk):
+        doc = get_object_or_404(
+            CaseDocument.objects.select_related("case"),
+            id=pk,
+            case_id=case_id,
+            case__tracked_by=request.user,
+        )
+
+        if not doc.file:
+            return Response(
+                {"detail": "File not found on storage."}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        try:
+            file_handle = doc.file.open("rb")
+        except (FileNotFoundError, OSError):
+            return Response(
+                {"detail": "File missing on storage."}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        response = FileResponse(
+            file_handle,
+            as_attachment=True,
+            filename=doc.original_filename,
+            content_type=doc.mime_type or "application/octet-stream",
+        )
+        response["Content-Length"] = doc.file_size
+        return response
+
+
+class CaseNoteListCreateView(APIView):
+    """List advocate's private notes for a case or create a new private note."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_case(self, case_id):
+        return get_object_or_404(Case, id=case_id, tracked_by=self.request.user)
+
+    def get(self, request, case_id):
+        case = self.get_case(case_id)
+        notes = CaseNote.objects.filter(case=case, advocate=request.user)
+
+        search = request.query_params.get("search", "").strip()
+        if search:
+            notes = notes.filter(Q(title__icontains=search) | Q(content__icontains=search))
+
+        notes = notes.order_by("-is_pinned", "-updated_at")
+        serializer = CaseNoteSerializer(notes, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def post(self, request, case_id):
+        case = self.get_case(case_id)
+        serializer = CaseNoteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        note = serializer.save(case=case, advocate=request.user)
+        return Response(CaseNoteSerializer(note).data, status=status.HTTP_201_CREATED)
+
+
+class CaseNoteDetailView(APIView):
+    """Retrieve, update, or delete a private case note. Strictly owner-isolated."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_note(self, case_id, pk):
+        return get_object_or_404(CaseNote, id=pk, case_id=case_id, advocate=self.request.user)
+
+    def get(self, request, case_id, pk):
+        note = self.get_note(case_id, pk)
+        return Response(CaseNoteSerializer(note).data, status=status.HTTP_200_OK)
+
+    def patch(self, request, case_id, pk):
+        note = self.get_note(case_id, pk)
+        serializer = CaseNoteSerializer(note, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        updated_note = serializer.save()
+        return Response(CaseNoteSerializer(updated_note).data, status=status.HTTP_200_OK)
+
+    def put(self, request, case_id, pk):
+        note = self.get_note(case_id, pk)
+        serializer = CaseNoteSerializer(note, data=request.data)
+        serializer.is_valid(raise_exception=True)
+        updated_note = serializer.save()
+        return Response(CaseNoteSerializer(updated_note).data, status=status.HTTP_200_OK)
+
+    def delete(self, request, case_id, pk):
+        note = self.get_note(case_id, pk)
+        note.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class CaseSummaryPdfExportView(APIView):
+    """Export comprehensive legal case docket summary as PDF."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, case_id):
+        case = get_object_or_404(
+            Case.objects.prefetch_related("hearings", "judgments", "documents", "notes"),
+            id=case_id,
+            tracked_by=request.user,
+        )
+        pdf_bytes = CasePdfExportService.generate_case_summary_pdf(case, user=request.user)
+        filename = f"{case.case_type}_{case.case_number}_{case.filing_year}_summary.pdf"
+        response = HttpResponse(pdf_bytes, content_type="application/pdf")
+        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        response["Content-Length"] = len(pdf_bytes)
+        return response
+
+
+class CaseListCsvExportView(APIView):
+    """Export filtered list of tracked cases as sanitized CSV with CWE-1236 mitigation."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        list_view = CaseListCreateView()
+        list_view.request = request
+        list_view.format_kwarg = None
+        queryset = list_view.get_queryset()
+
+        csv_content = CaseCsvExportService.generate_case_list_csv(queryset)
+        timestamp = timezone.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"aphc_cases_export_{timestamp}.csv"
+
+        response = HttpResponse(csv_content, content_type="text/csv; charset=utf-8")
+        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        return response

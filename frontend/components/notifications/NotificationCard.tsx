@@ -8,6 +8,7 @@ import { NotificationItem, NotificationCategory } from '../../types';
 interface NotificationCardProps {
   notification: NotificationItem;
   onMarkRead?: (id: number) => void;
+  onPress?: (notification: NotificationItem) => void;
   testID?: string;
 }
 
@@ -19,10 +20,24 @@ const getCategoryBadge = (
       return { label: 'Judgment & Orders', variant: 'gold' };
     case 'HEARING_CHANGE':
       return { label: 'Hearing Change', variant: 'warning' };
+    case 'CASE_UPDATE':
+      return { label: 'Docket Update', variant: 'warning' };
     case 'REMINDER':
+    case 'HEARING_REMINDER':
       return { label: 'Hearing Reminder', variant: 'info' };
     case 'TOKEN_ALERT':
-      return { label: 'Court Token Alert', variant: 'success' };
+      return { label: 'Court Token Alert', variant: 'warning' };
+    case 'TOKEN_APPROACHING':
+      return { label: 'Token Approaching', variant: 'warning' };
+    case 'TOKEN_CALLED':
+      return { label: 'Token Called', variant: 'success' };
+    case 'VOICE_TRANSCRIPTION_COMPLETED':
+      return { label: 'Voice Transcribed', variant: 'success' };
+    case 'VOICE_TRANSCRIPTION_FAILED':
+      return { label: 'Voice Failed', variant: 'danger' };
+    case 'CALENDAR_REMINDER':
+    case 'COMPLIANCE_DEADLINE':
+      return { label: 'Agenda / Deadline', variant: 'warning' };
     case 'CAUSELIST':
       return { label: 'Cause List', variant: 'primary' };
     default:
@@ -33,15 +48,13 @@ const getCategoryBadge = (
 export const NotificationCard: React.FC<NotificationCardProps> = ({
   notification,
   onMarkRead,
+  onPress,
   testID,
 }) => {
   const { label, variant } = getCategoryBadge(notification.category);
 
-  return (
-    <Card
-      style={[styles.card, !notification.is_read && styles.unreadCard]}
-      testID={testID || `notification-card-${notification.id}`}
-    >
+  const content = (
+    <>
       <View style={styles.headerRow}>
         <View style={styles.badgeContainer}>
           <Badge
@@ -74,13 +87,39 @@ export const NotificationCard: React.FC<NotificationCardProps> = ({
         <View style={styles.footerRow}>
           <TouchableOpacity
             style={styles.markReadButton}
-            onPress={() => onMarkRead(notification.id)}
+            onPress={e => {
+              e?.stopPropagation?.();
+              onMarkRead(notification.id);
+            }}
             testID={`mark-read-button-${notification.id}`}
           >
             <Text style={styles.markReadText}>Mark as read</Text>
           </TouchableOpacity>
         </View>
       )}
+    </>
+  );
+
+  if (onPress) {
+    return (
+      <TouchableOpacity
+        onPress={() => onPress(notification)}
+        activeOpacity={0.7}
+        testID={testID || `notification-card-${notification.id}`}
+      >
+        <Card style={[styles.card, !notification.is_read && styles.unreadCard]}>
+          {content}
+        </Card>
+      </TouchableOpacity>
+    );
+  }
+
+  return (
+    <Card
+      style={[styles.card, !notification.is_read && styles.unreadCard]}
+      testID={testID || `notification-card-${notification.id}`}
+    >
+      {content}
     </Card>
   );
 };

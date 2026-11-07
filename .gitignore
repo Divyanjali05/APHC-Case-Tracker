@@ -2,7 +2,28 @@
 .env
 .env.*
 !.env.example
+!backend/.env.example
+!frontend/.env.example
+!mobile/.env.example
 *.env
+
+# Confidential Protected Media & Legal Documents
+protected_media/
+backend/protected_media/
+
+# Mobile & Cloud Credentials
+google-services.json
+GoogleService-Info.plist
+*service*account*.json
+*credentials*.json
+
+# Keystores, Certificates & Private Keys
+*.pem
+*.key
+*.keystore
+*.jks
+*.p8
+*.p12
 
 # Python & Django
 __pycache__/

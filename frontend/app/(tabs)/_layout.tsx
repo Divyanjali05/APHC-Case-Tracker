@@ -51,6 +51,17 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="calendar"
+        options={{
+          title: t('tabs.calendar', 'Calendar'),
+          tabBarTestID: 'tab-calendar',
+          tabBarLabel: ({ color }) => (
+            <Text style={[styles.tabLabel, { color }]}>{t('tabs.calendar', 'Calendar')}</Text>
+          ),
+          headerTitle: t('calendar.title', 'Daily Agenda & Calendar'),
+        }}
+      />
+      <Tabs.Screen
         name="reminders"
         options={{
           title: t('tabs.reminders'),

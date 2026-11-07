@@ -29,13 +29,21 @@ import { formatCaseNumber, formatDate } from '../../utils/formatters';
 import { speechService } from '../../services/speech/ttsService';
 import { HearingItem, JudgmentItem } from '../../types';
 import { CaseHistoryTimeline } from '../../components/cases/CaseHistoryTimeline';
+import { CaseDocumentsSection } from '../../components/cases/CaseDocumentsSection';
+import { CaseNotesSection } from '../../components/cases/CaseNotesSection';
+import { CaseVoiceNotesSection } from '../../components/cases/CaseVoiceNotesSection';
 import { CourtStatusCard } from '../../components/cases/CourtStatusCard';
 import { CourtStatusTimeline } from '../../components/cases/CourtStatusTimeline';
 import { RescheduleHearingModal } from '../../components/hearings/RescheduleHearingModal';
+import { API_BASE_URL } from '../../services/api/client';
+import { ENDPOINTS } from '../../services/api/endpoints';
+import { tokenStorage } from '../../services/auth/tokenStorage';
 
 export default function CaseDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { t, i18n } = useTranslation();
+  const [activeTab, setActiveTab] = useState<'OVERVIEW' | 'DOCUMENTS' | 'NOTES' | 'VOICE_NOTES'>('OVERVIEW');
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [rescheduleHearing, setRescheduleHearing] = useState<HearingItem | null>(null);
   const [syncFeedback, setSyncFeedback] = useState<{
     message: string | null;
@@ -43,6 +51,28 @@ export default function CaseDetailScreen() {
   }>({ message: null, error: null });
 
   const { data: caseItem, isLoading, isError, refetch } = useCaseDetail(id || '');
+
+  const handleExportPdf = async () => {
+    if (!caseItem?.id) return;
+    try {
+      setIsExportingPdf(true);
+      const token = await tokenStorage.getAccessToken();
+      const exportUrl = `${API_BASE_URL}${ENDPOINTS.CASES.EXPORT_PDF(caseItem.id)}?token=${token || ''}`;
+      const canOpen = await Linking.canOpenURL(exportUrl);
+      if (canOpen) {
+        await Linking.openURL(exportUrl);
+      } else {
+        Alert.alert(
+          t('export.exportSuccess', 'Export Complete'),
+          `Docket PDF available for ${caseItem.case_type} ${caseItem.case_number}/${caseItem.filing_year}`
+        );
+      }
+    } catch {
+      Alert.alert(t('common.error', 'Error'), t('export.exportFailed', 'Failed to generate PDF.'));
+    } finally {
+      setIsExportingPdf(false);
+    }
+  };
   const {
     data: historyData,
     isLoading: isHistoryLoading,
@@ -197,17 +227,81 @@ export default function CaseDetailScreen() {
             {caseItem.respondent}
           </Text>
 
-          <Button
-            title="Listen to Case Summary"
-            variant="outline"
-            onPress={handleSpeakSummary}
-            style={styles.voiceButton}
-            testID="speak-case-button"
-          />
+          <View style={styles.bannerActionsRow}>
+            <Button
+              title="Listen to Case Summary"
+              variant="outline"
+              onPress={handleSpeakSummary}
+              style={styles.bannerActionBtn}
+              testID="speak-case-button"
+            />
+            <Button
+              title={isExportingPdf ? t('export.pdfExporting', 'Exporting PDF...') : t('export.exportPdf', 'Export Docket PDF')}
+              variant="secondary"
+              onPress={handleExportPdf}
+              style={styles.bannerActionBtn}
+              disabled={isExportingPdf}
+              testID="export-case-pdf-button"
+            />
+          </View>
         </Card>
 
-        {/* Court Listing & Token Card */}
-        <CourtStatusCard
+        {/* Tab Navigation Segmented Bar */}
+        <View style={styles.tabBar} testID="case-detail-tabs">
+          <TouchableOpacity
+            style={[styles.tabButton, activeTab === 'OVERVIEW' && styles.tabButtonActive]}
+            onPress={() => setActiveTab('OVERVIEW')}
+            testID="tab-overview"
+          >
+            <Text style={[styles.tabText, activeTab === 'OVERVIEW' && styles.tabTextActive]}>
+              {t('cases.details', 'Overview')}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tabButton, activeTab === 'DOCUMENTS' && styles.tabButtonActive]}
+            onPress={() => setActiveTab('DOCUMENTS')}
+            testID="tab-documents"
+          >
+            <Text style={[styles.tabText, activeTab === 'DOCUMENTS' && styles.tabTextActive]}>
+              {t('documents.title', 'Documents')}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tabButton, activeTab === 'NOTES' && styles.tabButtonActive]}
+            onPress={() => setActiveTab('NOTES')}
+            testID="tab-notes"
+          >
+            <Text style={[styles.tabText, activeTab === 'NOTES' && styles.tabTextActive]}>
+              {t('notes.title', 'Private Notes')}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tabButton, activeTab === 'VOICE_NOTES' && styles.tabButtonActive]}
+            onPress={() => setActiveTab('VOICE_NOTES')}
+            testID="tab-voice-notes"
+          >
+            <Text style={[styles.tabText, activeTab === 'VOICE_NOTES' && styles.tabTextActive]}>
+              {t('voiceNotes.title', 'Voice Notes')}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {activeTab === 'DOCUMENTS' && (
+          <CaseDocumentsSection caseId={caseItem.id} />
+        )}
+
+        {activeTab === 'NOTES' && (
+          <CaseNotesSection caseId={caseItem.id} />
+        )}
+
+        {activeTab === 'VOICE_NOTES' && (
+          <CaseVoiceNotesSection caseId={caseItem.id} />
+        )}
+
+        {activeTab === 'OVERVIEW' && (
+          <>
+            {/* Court Listing & Token Card */}
+            <CourtStatusCard
           caseId={caseItem.id}
           statusData={courtStatusData}
           isLoading={isCourtStatusLoading}
@@ -425,6 +519,8 @@ export default function CaseDetailScreen() {
             onRetry={refetchHistory}
           />
         </Card>
+        </>
+        )}
       </ScrollView>
 
       {/* Reschedule Hearing Modal */}
@@ -472,6 +568,42 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '800',
     letterSpacing: 1,
+  },
+  bannerActionsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 12,
+  },
+  bannerActionBtn: {
+    flex: 1,
+    minHeight: 38,
+  },
+  tabBar: {
+    flexDirection: 'row',
+    backgroundColor: Colors.surface,
+    marginHorizontal: 16,
+    marginBottom: 16,
+    borderRadius: 10,
+    padding: 4,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  tabButton: {
+    flex: 1,
+    paddingVertical: 8,
+    alignItems: 'center',
+    borderRadius: 8,
+  },
+  tabButtonActive: {
+    backgroundColor: Colors.primary,
+  },
+  tabText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: Colors.text.secondary,
+  },
+  tabTextActive: {
+    color: Colors.text.white,
   },
   voiceButton: {
     marginTop: 10,

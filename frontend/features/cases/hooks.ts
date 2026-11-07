@@ -9,6 +9,9 @@ import {
   CaseHistoryItem,
   HearingItem,
   RescheduleHearingPayload,
+  DashboardData,
+  CaseDocumentItem,
+  CaseNoteItem,
 } from '../../types';
 
 export const useCases = () => {
@@ -36,6 +39,40 @@ export const useCases = () => {
         const cached = await offlineStorage.getCachedCases(enrollment);
         if (cached && cached.data) {
           return cached.data;
+        }
+        throw err;
+      }
+    },
+  });
+};
+
+export const useDashboard = () => {
+  return useQuery({
+    queryKey: ['dashboard'],
+    queryFn: async (): Promise<
+      DashboardData & { isOfflineCached?: boolean; cachedAt?: string }
+    > => {
+      const enrollment = await tokenStorage.getUserEnrollment();
+      try {
+        const response = await apiClient.get<DashboardData>(ENDPOINTS.CASES.DASHBOARD);
+        const data = response.data;
+        await offlineStorage.saveCachedDashboard(enrollment, data);
+        await offlineStorage.saveSyncMetadata(enrollment, {
+          lastSyncedAt: new Date().toISOString(),
+          status: 'ONLINE',
+        });
+        return {
+          ...data,
+          isOfflineCached: false,
+        };
+      } catch (err) {
+        const cached = await offlineStorage.getCachedDashboard(enrollment);
+        if (cached && cached.data) {
+          return {
+            ...cached.data,
+            isOfflineCached: true,
+            cachedAt: cached.lastSyncedAt,
+          };
         }
         throw err;
       }
@@ -190,6 +227,7 @@ export const useRescheduleHearing = () => {
       return response.data;
     },
     onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['upcoming-hearings'] });
       queryClient.invalidateQueries({ queryKey: ['case', String(variables.caseId)] });
       queryClient.invalidateQueries({
@@ -197,6 +235,173 @@ export const useRescheduleHearing = () => {
       });
       queryClient.invalidateQueries({ queryKey: ['cases'] });
       queryClient.invalidateQueries({ queryKey: ['reminders'] });
+    },
+  });
+};
+
+export const useCaseDocuments = (
+  caseId: number | string,
+  category?: string
+) => {
+  return useQuery({
+    queryKey: ['case-documents', String(caseId), category || 'all'],
+    queryFn: async (): Promise<CaseDocumentItem[]> => {
+      const url = category
+        ? `${ENDPOINTS.CASES.DOCUMENTS(caseId)}?category=${encodeURIComponent(category)}`
+        : ENDPOINTS.CASES.DOCUMENTS(caseId);
+      const response = await apiClient.get<CaseDocumentItem[]>(url);
+      return Array.isArray(response.data) ? response.data : [];
+    },
+    enabled: !!caseId,
+  });
+};
+
+export interface UploadCaseDocumentArgs {
+  caseId: number | string;
+  formData: FormData;
+}
+
+export const useUploadCaseDocument = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ caseId, formData }: UploadCaseDocumentArgs) => {
+      const response = await apiClient.post<CaseDocumentItem>(
+        ENDPOINTS.CASES.DOCUMENTS(caseId),
+        formData,
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        }
+      );
+      return response.data;
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: ['case-documents', String(variables.caseId)],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ['case', String(variables.caseId)],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ['case-history', String(variables.caseId)],
+      });
+    },
+  });
+};
+
+export interface DeleteCaseDocumentArgs {
+  caseId: number | string;
+  documentId: number | string;
+}
+
+export const useDeleteCaseDocument = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ caseId, documentId }: DeleteCaseDocumentArgs) => {
+      await apiClient.delete(ENDPOINTS.CASES.DOCUMENT_DETAIL(caseId, documentId));
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: ['case-documents', String(variables.caseId)],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ['case', String(variables.caseId)],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ['case-history', String(variables.caseId)],
+      });
+    },
+  });
+};
+
+export const useCaseNotes = (
+  caseId: number | string,
+  search?: string
+) => {
+  return useQuery({
+    queryKey: ['case-notes', String(caseId), search || ''],
+    queryFn: async (): Promise<CaseNoteItem[]> => {
+      const url = search
+        ? `${ENDPOINTS.CASES.NOTES(caseId)}?search=${encodeURIComponent(search)}`
+        : ENDPOINTS.CASES.NOTES(caseId);
+      const response = await apiClient.get<CaseNoteItem[]>(url);
+      return Array.isArray(response.data) ? response.data : [];
+    },
+    enabled: !!caseId,
+  });
+};
+
+export interface CreateCaseNoteArgs {
+  caseId: number | string;
+  payload: {
+    title: string;
+    content: string;
+    is_pinned?: boolean;
+  };
+}
+
+export const useCreateCaseNote = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ caseId, payload }: CreateCaseNoteArgs) => {
+      const response = await apiClient.post<CaseNoteItem>(
+        ENDPOINTS.CASES.NOTES(caseId),
+        payload
+      );
+      return response.data;
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: ['case-notes', String(variables.caseId)],
+      });
+    },
+  });
+};
+
+export interface UpdateCaseNoteArgs {
+  caseId: number | string;
+  noteId: number | string;
+  payload: Partial<{
+    title: string;
+    content: string;
+    is_pinned: boolean;
+  }>;
+}
+
+export const useUpdateCaseNote = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ caseId, noteId, payload }: UpdateCaseNoteArgs) => {
+      const response = await apiClient.patch<CaseNoteItem>(
+        ENDPOINTS.CASES.NOTE_DETAIL(caseId, noteId),
+        payload
+      );
+      return response.data;
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: ['case-notes', String(variables.caseId)],
+      });
+    },
+  });
+};
+
+export interface DeleteCaseNoteArgs {
+  caseId: number | string;
+  noteId: number | string;
+}
+
+export const useDeleteCaseNote = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ caseId, noteId }: DeleteCaseNoteArgs) => {
+      await apiClient.delete(ENDPOINTS.CASES.NOTE_DETAIL(caseId, noteId));
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: ['case-notes', String(variables.caseId)],
+      });
     },
   });
 };

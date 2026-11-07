@@ -8,6 +8,8 @@ import {
   TouchableOpacity,
   ScrollView,
   RefreshControl,
+  Alert,
+  Linking,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -22,6 +24,9 @@ import { Colors } from '../../constants/colors';
 import { useCases } from '../../features/cases/hooks';
 import { normalizeVoiceQuery } from '../../services/speech/voiceQueryNormalizer';
 import { CaseItem } from '../../types';
+import { API_BASE_URL } from '../../services/api/client';
+import { ENDPOINTS } from '../../services/api/endpoints';
+import { tokenStorage } from '../../services/auth/tokenStorage';
 
 type FilterType = 'ALL' | 'UPCOMING' | 'ADJOURNED' | 'WITH_JUDGMENT' | 'WITHOUT_JUDGMENT';
 type SortType = 'CASE_DATE' | 'NEXT_HEARING' | 'JUDGMENT_DATE' | 'CASE_NAME';
@@ -51,6 +56,28 @@ export default function CasesScreen() {
   );
   const [isJudgmentModalVisible, setIsJudgmentModalVisible] = useState(false);
   const [isVoiceModalVisible, setIsVoiceModalVisible] = useState(false);
+  const [isExportingCsv, setIsExportingCsv] = useState(false);
+
+  const handleExportCsv = async () => {
+    try {
+      setIsExportingCsv(true);
+      const token = await tokenStorage.getAccessToken();
+      const exportUrl = `${API_BASE_URL}${ENDPOINTS.CASES.EXPORT_CSV}?token=${token || ''}`;
+      const canOpen = await Linking.canOpenURL(exportUrl);
+      if (canOpen) {
+        await Linking.openURL(exportUrl);
+      } else {
+        Alert.alert(
+          t('export.exportSuccess', 'Export Complete'),
+          t('export.downloadedNotice', 'Cases CSV export available.')
+        );
+      }
+    } catch {
+      Alert.alert(t('common.error', 'Error'), t('export.exportFailed', 'Failed to generate CSV export.'));
+    } finally {
+      setIsExportingCsv(false);
+    }
+  };
 
   // Filter chips configuration
   const filterOptions: { key: FilterType; labelKey: string; fallback: string }[] = [
@@ -174,6 +201,23 @@ export default function CasesScreen() {
   return (
     <ScreenContainer testID="cases-screen">
       <OfflineBanner onSyncComplete={refetch} />
+      {/* Header Action Bar with CSV Export */}
+      <View style={styles.headerActionBar}>
+        <Text style={styles.caseCountText}>
+          {t('cases.title', 'My Tracked Cases')} ({processedCases.length})
+        </Text>
+        <TouchableOpacity
+          style={styles.exportCsvBtn}
+          onPress={handleExportCsv}
+          disabled={isExportingCsv}
+          testID="export-cases-csv-button"
+        >
+          <Text style={styles.exportCsvText}>
+            {isExportingCsv ? '...' : `📥 ${t('export.exportCsv', 'Export CSV')}`}
+          </Text>
+        </TouchableOpacity>
+      </View>
+
       {/* Search Input with Voice Search Button */}
       <View style={styles.searchContainer}>
         <TextInput
@@ -318,6 +362,31 @@ export default function CasesScreen() {
 }
 
 const styles = StyleSheet.create({
+  headerActionBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+    paddingHorizontal: 2,
+  },
+  caseCountText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: Colors.text.primary,
+  },
+  exportCsvBtn: {
+    backgroundColor: Colors.surface,
+    borderColor: Colors.border,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  exportCsvText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.primary,
+  },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',

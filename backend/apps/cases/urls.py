@@ -9,12 +9,20 @@ from apps.court_data.views import (
 
 from .views import (
     CaseDetailView,
+    CaseDocumentDetailView,
+    CaseDocumentDownloadView,
+    CaseDocumentListCreateView,
     CaseHearingDetailView,
     CaseHearingListCreateView,
     CaseHistoryListView,
     CaseJudgmentListCreateView,
     CaseListCreateView,
+    CaseListCsvExportView,
+    CaseNoteDetailView,
+    CaseNoteListCreateView,
     CasesStatusView,
+    CaseSummaryPdfExportView,
+    DashboardView,
     HearingRescheduleView,
     JudgmentDetailView,
     JudgmentDocumentView,
@@ -25,13 +33,41 @@ from .views import (
 app_name = "cases"
 
 urlpatterns = [
+    path("dashboard/", DashboardView.as_view(), name="dashboard"),
     path("status/", CasesStatusView.as_view(), name="status"),
     path(
         "voice-search/normalize/", VoiceQueryNormalizeView.as_view(), name="voice_search_normalize"
     ),
     path("hearings/upcoming/", UpcomingHearingsListView.as_view(), name="upcoming_hearings_list"),
+    path("export/csv/", CaseListCsvExportView.as_view(), name="export_cases_csv"),
     path("", CaseListCreateView.as_view(), name="case_list_create"),
     path("<int:pk>/", CaseDetailView.as_view(), name="case_detail"),
+    path("<int:case_id>/export/pdf/", CaseSummaryPdfExportView.as_view(), name="export_case_pdf"),
+    path(
+        "<int:case_id>/documents/",
+        CaseDocumentListCreateView.as_view(),
+        name="case_document_list_create",
+    ),
+    path(
+        "<int:case_id>/documents/<int:pk>/",
+        CaseDocumentDetailView.as_view(),
+        name="case_document_detail",
+    ),
+    path(
+        "<int:case_id>/documents/<int:pk>/download/",
+        CaseDocumentDownloadView.as_view(),
+        name="case_document_download",
+    ),
+    path(
+        "<int:case_id>/notes/",
+        CaseNoteListCreateView.as_view(),
+        name="case_note_list_create",
+    ),
+    path(
+        "<int:case_id>/notes/<int:pk>/",
+        CaseNoteDetailView.as_view(),
+        name="case_note_detail",
+    ),
     path("<int:case_id>/history/", CaseHistoryListView.as_view(), name="case_history_list"),
     path(
         "<int:case_id>/hearings/",

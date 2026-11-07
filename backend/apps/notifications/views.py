@@ -11,35 +11,61 @@ from rest_framework_simplejwt.authentication import JWTAuthentication
 from .models import DeviceRegistration, NotificationHistory
 from .realtime import RealtimeService
 from .serializers import (
+    DeviceDeactivationSerializer,
     DeviceRegistrationSerializer,
     NotificationHistorySerializer,
     RealtimeEventSerializer,
 )
+from .services import NotificationService
 
 logger = logging.getLogger(__name__)
 
 
-class DeviceRegistrationView(generics.CreateAPIView):
-    """Register or refresh mobile Expo push notification token."""
+class DeviceRegistrationView(generics.ListCreateAPIView):
+    """Register or rotate mobile push notification token, or list active devices."""
 
     serializer_class = DeviceRegistrationSerializer
     permission_classes = [permissions.IsAuthenticated]
 
-    def perform_create(self, serializer):
-        token = serializer.validated_data.get("expo_push_token")
-        DeviceRegistration.objects.update_or_create(
-            expo_push_token=token,
-            defaults={
-                "user": self.request.user,
-                "device_name": serializer.validated_data.get("device_name", ""),
-                "platform": serializer.validated_data.get("platform", "android"),
-                "is_active": True,
-            },
+    def get_queryset(self):
+        return DeviceRegistration.objects.filter(user=self.request.user)
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        device = NotificationService.register_device(
+            user=request.user,
+            expo_push_token=serializer.validated_data["expo_push_token"],
+            platform=serializer.validated_data.get("platform", "android"),
+            device_id=serializer.validated_data.get("device_id", ""),
+            app_version=serializer.validated_data.get("app_version", ""),
+            device_name=serializer.validated_data.get("device_name", ""),
+        )
+        return Response(
+            DeviceRegistrationSerializer(device).data,
+            status=status.HTTP_201_CREATED,
         )
 
 
+class DeviceDeactivationView(APIView):
+    """Deactivate one or all registered push devices upon logout."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        serializer = DeviceDeactivationSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        count = NotificationService.deactivate_device(
+            user=request.user,
+            expo_push_token=serializer.validated_data.get("expo_push_token"),
+            device_id=serializer.validated_data.get("device_id"),
+            all_devices=serializer.validated_data.get("all", False),
+        )
+        return Response({"deactivated_count": count}, status=status.HTTP_200_OK)
+
+
 class NotificationHistoryListView(generics.ListAPIView):
-    """List notification history for the authenticated advocate with category and status filtering."""
+    """List notification history for authenticated advocate with category and read status filtering."""
 
     serializer_class = NotificationHistorySerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -66,6 +92,19 @@ class NotificationHistoryListView(generics.ListAPIView):
                 pass
 
         return queryset
+
+
+class NotificationUnreadCountView(APIView):
+    """Return count of unread notifications for the authenticated advocate."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        unread_count = NotificationHistory.objects.filter(
+            user=request.user,
+            is_read=False,
+        ).count()
+        return Response({"unread_count": unread_count}, status=status.HTTP_200_OK)
 
 
 class NotificationMarkReadView(APIView):
@@ -113,10 +152,7 @@ class NotificationMarkAllReadView(APIView):
 
 
 class RealtimeTicketView(APIView):
-    """Issue a short-lived, single-use stream ticket for establishing an SSE connection.
-
-    Eliminates exposing long-lived access tokens or refresh tokens in URL query strings.
-    """
+    """Issue a short-lived, single-use stream ticket for establishing an SSE connection."""
 
     permission_classes = [permissions.IsAuthenticated]
 
@@ -132,11 +168,7 @@ class RealtimeTicketView(APIView):
 
 
 class RealtimeEventsView(APIView):
-    """Delta sync endpoint for recovering missed real-time events.
-
-    Retrieves events for the authenticated advocate strictly after since_id cursor.
-    Detects expired/pruned cursors to trigger full-state resynchronization.
-    """
+    """Delta sync endpoint for recovering missed real-time events."""
 
     permission_classes = [permissions.IsAuthenticated]
 
@@ -179,20 +211,14 @@ class RealtimeEventsView(APIView):
 
 
 class RealtimeStreamView(APIView):
-    """Server-Sent Events (SSE) streaming endpoint for authenticated advocates.
-
-    Supports Authorization: Bearer <token> header and single-use ?ticket=<ticket> query parameter.
-    Raw long-lived access tokens in query parameters are rejected to prevent log exposure.
-    """
+    """Server-Sent Events (SSE) streaming endpoint for authenticated advocates."""
 
     permission_classes = [permissions.AllowAny]
 
     def get_user_from_request(self, request):
-        # 1. Prefer Authorization Bearer header
         if request.user and request.user.is_authenticated:
             return request.user
 
-        # 2. Check header via JWTAuthentication directly
         header_auth = JWTAuthentication()
         try:
             header = header_auth.get_header(request)
@@ -204,7 +230,6 @@ class RealtimeStreamView(APIView):
         except Exception:
             pass
 
-        # 3. Check single-use stream ticket (consumed immediately, cannot be reused)
         ticket = request.query_params.get("ticket")
         if ticket:
             user = RealtimeService.consume_stream_ticket(ticket)
@@ -221,7 +246,6 @@ class RealtimeStreamView(APIView):
                 status=status.HTTP_401_UNAUTHORIZED,
             )
 
-        # Parse cursor: since_id or Last-Event-ID header
         since_id_header = request.headers.get("Last-Event-ID") or request.META.get(
             "HTTP_LAST_EVENT_ID"
         )
@@ -242,16 +266,13 @@ class RealtimeStreamView(APIView):
 
         def event_stream():
             cursor = since_id
-            # 1. Immediately yield missed events
             initial_events = RealtimeService.get_events_since(user=user, since_id=cursor, limit=100)
             for ev in initial_events:
                 cursor = max(cursor, ev.id)
                 yield RealtimeService.format_sse_frame(ev)
 
-            # 2. Initial heartbeat frame
             yield RealtimeService.format_sse_ping()
 
-            # 3. Stream loop
             start_time = time.time()
             redis_client = RealtimeService.get_redis_client()
             pubsub = None
@@ -300,7 +321,6 @@ class RealtimeStreamView(APIView):
                             yield RealtimeService.format_sse_frame(ev)
                         time.sleep(1.0)
 
-                        # Attempt Redis recovery periodically
                         now = time.time()
                         if now - last_recovery_check >= 15.0:
                             last_recovery_check = now

@@ -17,6 +17,7 @@ import { Badge } from '../../components/common/Badge';
 import { Colors } from '../../constants/colors';
 import { authService } from '../../services/auth/authService';
 import { speechService } from '../../services/speech/ttsService';
+import { pushNotificationService } from '../../services/notifications/pushService';
 
 export default function SettingsScreen() {
   const { t, i18n } = useTranslation();
@@ -45,6 +46,7 @@ export default function SettingsScreen() {
           text: t('settings.logout'),
           style: 'destructive',
           onPress: async () => {
+            await pushNotificationService.deactivatePushNotifications().catch(() => {});
             await authService.logout();
             router.replace('/(auth)/login');
           },
@@ -126,7 +128,14 @@ export default function SettingsScreen() {
             </View>
             <Switch
               value={notificationsEnabled}
-              onValueChange={setNotificationsEnabled}
+              onValueChange={async (enabled: boolean) => {
+                setNotificationsEnabled(enabled);
+                if (enabled) {
+                  await pushNotificationService.registerForPushNotifications().catch(() => {});
+                } else {
+                  await pushNotificationService.deactivatePushNotifications().catch(() => {});
+                }
+              }}
               trackColor={{ false: Colors.border, true: Colors.primaryLight }}
               thumbColor={notificationsEnabled ? Colors.gold : Colors.text.muted}
             />

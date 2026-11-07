@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { CaseItem, HearingItem, ReminderItem } from '../../types';
+import { CaseItem, HearingItem, ReminderItem, DashboardData, NotificationItem } from '../../types';
 import { secureEncryption } from './secureEncryption';
 
 export interface CachedEnvelope<T> {
@@ -163,6 +163,38 @@ export const offlineStorage = {
   },
 
   /**
+   * Save cached dashboard data using Authenticated AES-256 encryption.
+   */
+  async saveCachedDashboard(userKey: string, dashboard: DashboardData): Promise<void> {
+    const key = buildKey(userKey, 'dashboard');
+    const envelope: CachedEnvelope<DashboardData> = {
+      data: dashboard,
+      lastSyncedAt: new Date().toISOString(),
+      isCached: true,
+    };
+    const encrypted = await secureEncryption.encrypt(userKey, JSON.stringify(envelope));
+    await AsyncStorage.setItem(key, encrypted);
+  },
+
+  /**
+   * Retrieve cached dashboard data from encrypted cache.
+   */
+  async getCachedDashboard(
+    userKey: string
+  ): Promise<CachedEnvelope<DashboardData> | null> {
+    const key = buildKey(userKey, 'dashboard');
+    const raw = await AsyncStorage.getItem(key);
+    if (!raw) return null;
+    try {
+      const decrypted = await secureEncryption.decrypt(userKey, raw);
+      if (!decrypted) return null;
+      return JSON.parse(decrypted);
+    } catch {
+      return null;
+    }
+  },
+
+  /**
    * Save non-sensitive synchronization metadata for this advocate (unencrypted).
    */
   async saveSyncMetadata(userKey: string, meta: Partial<SyncMetadata>): Promise<void> {
@@ -196,6 +228,36 @@ export const offlineStorage = {
         status: 'ONLINE',
         pendingCount: 0,
       };
+    }
+  },
+
+  /**
+   * Save cached notifications list for the advocate using Authenticated AES-256 encryption.
+   */
+  async saveCachedNotifications(userKey: string, notifications: NotificationItem[]): Promise<void> {
+    const key = buildKey(userKey, 'notifications');
+    const envelope: CachedEnvelope<NotificationItem[]> = {
+      data: notifications,
+      lastSyncedAt: new Date().toISOString(),
+      isCached: true,
+    };
+    const encrypted = await secureEncryption.encrypt(userKey, JSON.stringify(envelope));
+    await AsyncStorage.setItem(key, encrypted);
+  },
+
+  /**
+   * Retrieve cached notifications list for the advocate, decrypting and verifying authenticity.
+   */
+  async getCachedNotifications(userKey: string): Promise<CachedEnvelope<NotificationItem[]> | null> {
+    const key = buildKey(userKey, 'notifications');
+    const raw = await AsyncStorage.getItem(key);
+    if (!raw) return null;
+    try {
+      const decrypted = await secureEncryption.decrypt(userKey, raw);
+      if (!decrypted) return null;
+      return JSON.parse(decrypted);
+    } catch {
+      return null;
     }
   },
 

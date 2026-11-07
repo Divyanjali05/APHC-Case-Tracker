@@ -1,5 +1,6 @@
-import os
 from urllib.parse import urlparse
+
+from decouple import config
 
 from .base import *  # noqa: F403
 from .base import BASE_DIR
@@ -7,8 +8,15 @@ from .base import BASE_DIR
 DEBUG = True
 ALLOWED_HOSTS = ["*"]
 
-# Database: PostgreSQL if DATABASE_URL provided, else local SQLite
-DATABASE_URL = os.getenv("DATABASE_URL")
+# Database Configuration:
+# Connects to PostgreSQL if DATABASE_URL or DB_NAME is provided;
+# otherwise falls back to SQLite for local development and rapid testing.
+DATABASE_URL = config("DATABASE_URL", default=None)
+DB_NAME = config("DB_NAME", default=None)
+DB_USER = config("DB_USER", default="postgres")
+DB_PASSWORD = config("DB_PASSWORD", default="")
+DB_HOST = config("DB_HOST", default="localhost")
+DB_PORT = config("DB_PORT", default=5432, cast=int)
 
 if DATABASE_URL:
     parsed_db = urlparse(DATABASE_URL)
@@ -20,6 +28,17 @@ if DATABASE_URL:
             "PASSWORD": parsed_db.password or "",
             "HOST": parsed_db.hostname or "localhost",
             "PORT": parsed_db.port or 5432,
+        }
+    }
+elif DB_NAME and DB_NAME.lower() not in ("sqlite", "sqlite3"):
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": DB_NAME,
+            "USER": DB_USER,
+            "PASSWORD": DB_PASSWORD,
+            "HOST": DB_HOST,
+            "PORT": DB_PORT,
         }
     }
 else:

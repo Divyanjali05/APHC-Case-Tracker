@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 from django.utils import timezone
 
 from .models import DeviceRegistration, NotificationHistory
+from .providers import get_push_provider
 
 if TYPE_CHECKING:
     from apps.cases.models import Hearing, Judgment
@@ -39,10 +40,118 @@ class PermanentPushDeliveryError(PushDeliveryError):
     """Permanent push delivery failure (e.g. malformed token, DeviceNotRegistered)."""
 
 
+def sanitize_push_payload(
+    title: str,
+    body: str,
+    category: str = "GENERAL",
+) -> tuple[str, str]:
+    """Sanitize lock-screen push notification content to preserve client and case confidentiality.
+
+    Party names, sensitive petitioner/respondent identities, and confidential
+    case strategy are kept off lock-screen previews. The complete details are
+    provided in the in-app notification center and the secure `data_payload`.
+    """
+    cat = (category or "").upper()
+    if cat in ("HEARING_REMINDER", "REMINDER"):
+        return (
+            "APHC Hearing Alert",
+            "You have an upcoming High Court hearing listed. Open app for details.",
+        )
+    if cat in ("TOKEN_APPROACHING", "TOKEN_ALERT"):
+        return (
+            "APHC Court Token Alert",
+            "A listed matter in your cause list is approaching hearing. Open app for details.",
+        )
+    if cat == "TOKEN_CALLED":
+        return (
+            "APHC Court Token Alert",
+            "A listed matter in your cause list has been called. Open app for details.",
+        )
+    if cat in ("CASE_UPDATE", "HEARING_CHANGE", "JUDGMENT"):
+        return (
+            "APHC Docket Update",
+            "An update has been posted to a tracked High Court case. Open app for details.",
+        )
+    if cat == "VOICE_TRANSCRIPTION_COMPLETED":
+        return (
+            "APHC Voice Note",
+            "Voice transcription is ready. Open app to view case notes.",
+        )
+    if cat == "VOICE_TRANSCRIPTION_FAILED":
+        return (
+            "APHC Voice Note",
+            "Voice note transcription failed. Open app to retry or view note.",
+        )
+    if cat in ("CALENDAR_REMINDER", "COMPLIANCE_DEADLINE"):
+        return (
+            "APHC Agenda Alert",
+            "You have an upcoming court calendar agenda item. Open app for details.",
+        )
+    return ("APHC Court Alert", "New notification available in APHC Case Tracker.")
+
+
 class NotificationService:
-    """Service for dispatching and archiving advocate push and in-app notifications."""
+    """Service for registering devices, dispatching push notifications, and managing notification history."""
 
     MAX_RETRIES = 3
+
+    @classmethod
+    def register_device(
+        cls,
+        user: Any,
+        expo_push_token: str,
+        platform: str = "android",
+        device_id: str = "",
+        app_version: str = "",
+        device_name: str = "",
+    ) -> DeviceRegistration:
+        """Register or rotate an advocate's mobile push device token."""
+        clean_token = expo_push_token.strip() if expo_push_token else ""
+        if not is_valid_expo_token(clean_token):
+            raise PermanentPushDeliveryError(f"Invalid Expo push token format: {clean_token}")
+
+        clean_platform = (platform or "android").lower()
+        if clean_platform not in ("android", "ios", "web"):
+            clean_platform = "android"
+
+        if device_id:
+            DeviceRegistration.objects.filter(
+                user=user,
+                device_id=device_id.strip(),
+            ).exclude(expo_push_token=clean_token).update(is_active=False)
+
+        device, _ = DeviceRegistration.objects.update_or_create(
+            expo_push_token=clean_token,
+            defaults={
+                "user": user,
+                "platform": clean_platform,
+                "device_id": device_id.strip() if device_id else "",
+                "app_version": app_version.strip() if app_version else "",
+                "device_name": device_name.strip() if device_name else f"{clean_platform.capitalize()} Device",
+                "is_active": True,
+                "failure_count": 0,
+                "last_seen_at": timezone.now(),
+            },
+        )
+        return device
+
+    @classmethod
+    def deactivate_device(
+        cls,
+        user: Any,
+        expo_push_token: str | None = None,
+        device_id: str | None = None,
+        all_devices: bool = False,
+    ) -> int:
+        """Deactivate advocate's push registration(s) upon logout or notification disable."""
+        qs = DeviceRegistration.objects.filter(user=user, is_active=True)
+        if all_devices:
+            return qs.update(is_active=False)
+        if expo_push_token:
+            return qs.filter(expo_push_token=expo_push_token.strip()).update(is_active=False)
+        if device_id:
+            return qs.filter(device_id=device_id.strip()).update(is_active=False)
+        return 0
 
     @classmethod
     def dispatch_push_to_devices(
@@ -51,13 +160,10 @@ class NotificationService:
         title: str,
         body: str,
         data_payload: dict | None = None,
+        is_sensitive: bool = False,
+        category: str = "GENERAL",
     ) -> int:
-        """Deliver push notification to registered Expo push tokens for the user.
-
-        Gracefully handles mock environments. If active devices fail due to network/gateway
-        errors, raises TemporaryPushDeliveryError or PermanentPushDeliveryError so the caller
-        can trigger safe retry mechanisms.
-        """
+        """Deliver push notification to registered Expo push tokens for the user."""
         devices = list(DeviceRegistration.objects.filter(user=user, is_active=True))
         if not devices:
             return 0
@@ -65,6 +171,12 @@ class NotificationService:
         dispatched_count = 0
         temporary_errors: list[str] = []
         permanent_errors: list[str] = []
+
+        push_title, push_body = (
+            sanitize_push_payload(title, body, category)
+            if is_sensitive
+            else (title, body)
+        )
 
         for device in devices:
             token = device.expo_push_token
@@ -80,8 +192,6 @@ class NotificationService:
                 continue
 
             try:
-                # In test or development environments, or when credentials are absent,
-                # log delivery safely. In production, sends via Expo HTTP push API.
                 logger.info(
                     "Mock push dispatched to %s [%s]: %s - %s",
                     device.user.username,
@@ -89,23 +199,39 @@ class NotificationService:
                     title,
                     body,
                 )
-                dispatched_count += 1
+                provider = get_push_provider()
+                batch = provider.send_push(
+                    tokens=[token],
+                    title=push_title,
+                    body=push_body,
+                    data=data_payload or {},
+                )
+                for res in batch.results:
+                    if res.status == "ok":
+                        dispatched_count += 1
+                    else:
+                        err_msg = res.message or "Push dispatch error"
+                        if res.is_permanent_error or "devicenotregistered" in err_msg.lower():
+                            device.is_active = False
+                            device.failure_count += 1
+                            device.save(update_fields=["is_active", "failure_count"])
+                            permanent_errors.append(err_msg)
+                        else:
+                            device.failure_count += 1
+                            device.save(update_fields=["failure_count"])
+                            temporary_errors.append(err_msg)
             except Exception as exc:
                 err_str = str(exc)
-                if "DeviceNotRegistered" in err_str or "unregistered" in err_str.lower():
+                if "devicenotregistered" in err_str.lower() or "unregistered" in err_str.lower():
                     device.is_active = False
-                    device.save(update_fields=["is_active"])
-                    logger.warning(
-                        "Deactivated unregistered device %s: DeviceNotRegistered",
-                        device.id,
-                    )
+                    device.failure_count += 1
+                    device.save(update_fields=["is_active", "failure_count"])
+                    logger.warning("Deactivated unregistered device %s: %s", device.id, exc)
                     permanent_errors.append(f"DeviceNotRegistered on device {device.id}")
                 else:
-                    logger.warning(
-                        "Temporary push delivery failure on device %s: %s",
-                        device.id,
-                        exc,
-                    )
+                    device.failure_count += 1
+                    device.save(update_fields=["failure_count"])
+                    logger.warning("Temporary push failure on device %s: %s", device.id, exc)
                     temporary_errors.append(str(exc))
 
         if dispatched_count == 0:
@@ -125,12 +251,9 @@ class NotificationService:
         cls,
         notification: NotificationHistory,
         raise_on_error: bool = False,
+        is_sensitive: bool = False,
     ) -> bool:
-        """Attempt push delivery to registered devices and record delivery status on data_payload.
-
-        Distinguishes DELIVERED, NO_ACTIVE_DEVICES, FAILED (temporary, retryable), and
-        PERMANENT_FAILURE (unregistered token / max retries reached).
-        """
+        """Attempt push delivery to registered devices and record delivery status on data_payload."""
         user = notification.user
         payload = dict(notification.data_payload or {})
         retry_count = payload.get("retry_count", 0)
@@ -141,16 +264,20 @@ class NotificationService:
                 title=notification.title,
                 body=notification.body,
                 data_payload=payload,
+                is_sensitive=is_sensitive,
+                category=notification.category,
             )
             if dispatched == 0:
                 payload["delivery_status"] = "NO_ACTIVE_DEVICES"
+                notification.delivery_status = "NO_ACTIVE_DEVICES"
             else:
                 payload["delivery_status"] = "DELIVERED"
                 payload["delivery_devices_count"] = dispatched
+                notification.delivery_status = "DELIVERED"
 
             payload["dispatched_at"] = timezone.now().isoformat()
             notification.data_payload = payload
-            notification.save(update_fields=["data_payload"])
+            notification.save(update_fields=["data_payload", "delivery_status"])
             return True
         except TemporaryPushDeliveryError as exc:
             retry_count += 1
@@ -159,6 +286,7 @@ class NotificationService:
             payload["failure_type"] = "TEMPORARY"
             if retry_count >= cls.MAX_RETRIES:
                 payload["delivery_status"] = "PERMANENT_FAILURE"
+                notification.delivery_status = "PERMANENT_FAILURE"
                 logger.error(
                     "Notification %s reached max retries (%d). Marked as PERMANENT_FAILURE: %s",
                     notification.id,
@@ -167,6 +295,7 @@ class NotificationService:
                 )
             else:
                 payload["delivery_status"] = "FAILED"
+                notification.delivery_status = "FAILED"
                 logger.warning(
                     "Notification %s temporary push failure (attempt %d/%d): %s",
                     notification.id,
@@ -175,7 +304,7 @@ class NotificationService:
                     exc,
                 )
             notification.data_payload = payload
-            notification.save(update_fields=["data_payload"])
+            notification.save(update_fields=["data_payload", "delivery_status"])
             if raise_on_error:
                 raise
             return False
@@ -190,6 +319,7 @@ class NotificationService:
 
             if is_permanent or retry_count >= cls.MAX_RETRIES:
                 payload["delivery_status"] = "PERMANENT_FAILURE"
+                notification.delivery_status = "PERMANENT_FAILURE"
                 payload["failure_type"] = "PERMANENT"
                 logger.error(
                     "Notification %s permanent push failure: %s",
@@ -198,6 +328,7 @@ class NotificationService:
                 )
             else:
                 payload["delivery_status"] = "FAILED"
+                notification.delivery_status = "FAILED"
                 payload["failure_type"] = "TEMPORARY"
                 logger.warning(
                     "Notification %s push delivery error (attempt %d/%d): %s",
@@ -208,18 +339,14 @@ class NotificationService:
                 )
 
             notification.data_payload = payload
-            notification.save(update_fields=["data_payload"])
+            notification.save(update_fields=["data_payload", "delivery_status"])
             if raise_on_error:
                 raise
             return False
 
     @classmethod
     def retry_failed_notifications(cls, max_retries: int = MAX_RETRIES) -> int:
-        """Scan and retry delivery for notifications that previously failed with temporary errors.
-
-        Bounded by max_retries. Updates the existing NotificationHistory record in-place
-        without creating duplicate records.
-        """
+        """Scan and retry delivery for notifications that previously failed with temporary errors."""
         failed_notifications = list(
             NotificationHistory.objects.filter(data_payload__delivery_status="FAILED")
         )
@@ -231,8 +358,9 @@ class NotificationService:
             if current_retries >= max_retries:
                 payload["delivery_status"] = "PERMANENT_FAILURE"
                 payload["failure_type"] = "PERMANENT"
+                notification.delivery_status = "PERMANENT_FAILURE"
                 notification.data_payload = payload
-                notification.save(update_fields=["data_payload"])
+                notification.save(update_fields=["data_payload", "delivery_status"])
                 continue
 
             if cls.dispatch_notification_to_devices(notification, raise_on_error=False):
@@ -242,16 +370,92 @@ class NotificationService:
         return successful_retries
 
     @classmethod
-    def send_reminder_notification(cls, reminder: Reminder) -> NotificationHistory | None:
-        """Create an archived notification and dispatch push for a due hearing reminder.
+    def send_push_notification(
+        cls,
+        user: Any,
+        title: str,
+        body: str,
+        category: str = "SYSTEM_ALERT",
+        data_payload: dict[str, Any] | None = None,
+        idempotency_key: str | None = None,
+        is_sensitive: bool = True,
+        async_delivery: bool = False,
+    ) -> NotificationHistory:
+        """Create and dispatch a push notification to all active devices of an advocate."""
+        if idempotency_key:
+            existing = NotificationHistory.objects.filter(
+                user=user,
+                idempotency_key=idempotency_key,
+            ).first()
+            if existing:
+                return existing
 
-        Idempotent: Reuses existing NotificationHistory record if retrying a previously failed attempt.
-        """
+        payload = dict(data_payload or {})
+        payload["original_title"] = title
+        payload["original_body"] = body
+
+        notification = NotificationHistory.objects.create(
+            user=user,
+            title=title,
+            body=body,
+            category=category,
+            data_payload=payload,
+            delivery_status="QUEUED",
+            idempotency_key=idempotency_key,
+        )
+
+        if async_delivery:
+            try:
+                from .tasks import send_push_notification_task
+
+                send_push_notification_task.delay(notification.id, idempotency_key=idempotency_key)
+                return notification
+            except Exception as exc:
+                logger.warning("Async Celery dispatch failed; falling back to sync: %s", exc)
+
+        cls.dispatch_notification_to_devices(
+            notification,
+            raise_on_error=False,
+            is_sensitive=is_sensitive,
+        )
+        try:
+            from .realtime import RealtimeService
+
+            RealtimeService.publish_notification_event(notification)
+        except Exception as exc:
+            logger.debug("Failed to publish notification realtime event: %s", exc)
+
+        return notification
+
+    @classmethod
+    def process_async_push_delivery(
+        cls,
+        notification_id: int,
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        """Worker task routine delivering a queued notification with retry validation."""
+        notification = NotificationHistory.objects.get(id=notification_id)
+        if notification.delivery_status == "DELIVERED":
+            return {"status": "already_delivered", "notification_id": notification_id}
+
+        success = cls.dispatch_notification_to_devices(
+            notification,
+            raise_on_error=True,
+            is_sensitive=True,
+        )
+        return {
+            "notification_id": notification_id,
+            "status": "delivered" if success else "failed",
+            "delivery_status": notification.delivery_status,
+        }
+
+    @classmethod
+    def send_reminder_notification(cls, reminder: Reminder) -> NotificationHistory | None:
+        """Create an archived notification and dispatch push for a due hearing reminder."""
         advocate = reminder.advocate
         case = reminder.case
         hearing = reminder.hearing
 
-        # Check advocate preference if exists
         pref = getattr(advocate, "reminder_preferences", None)
         if pref and not pref.push_notifications:
             logger.info(
@@ -259,7 +463,6 @@ class NotificationService:
             )
             return None
 
-        # Non-sensitive text representation (no sensitive party personal data)
         case_ref = (
             f"{case.case_type} {case.case_number}/{case.filing_year}" if case else "Court Matter"
         )
@@ -275,7 +478,6 @@ class NotificationService:
         if hearing and hearing.court_hall_number:
             body += f" Court Hall {hearing.court_hall_number}."
 
-        # Idempotency check: Reuse existing notification record if retry occurs
         existing_notification = NotificationHistory.objects.filter(
             user=advocate,
             category="REMINDER",
@@ -337,7 +539,7 @@ class NotificationService:
         old_time: Any | None = None,
         new_time: Any | None = None,
     ) -> NotificationHistory | None:
-        """Notify advocate when a hearing appearance has been rescheduled (Phase 4 compatibility)."""
+        """Notify advocate when a hearing appearance has been rescheduled."""
         pref = getattr(advocate, "reminder_preferences", None)
         if pref:
             if not pref.push_notifications or not getattr(
@@ -403,11 +605,7 @@ class NotificationService:
         document_uploaded: bool = False,
         changed_by: Any | None = None,
     ) -> list[NotificationHistory]:
-        """Dispatch push notifications to all advocates tracking the case when a judgment or order is posted.
-
-        Idempotent: Avoids duplicate dispatches for the same judgment event.
-        Respects advocate preferences for push notifications.
-        """
+        """Dispatch push notifications to all advocates tracking the case when a judgment or order is posted."""
         case = judgment.case
         advocates = list(case.tracked_by.all())
         if not advocates:
@@ -435,7 +633,6 @@ class NotificationService:
 
         created_notifications: list[NotificationHistory] = []
         for advocate in advocates:
-            # Check advocate preferences
             pref = getattr(advocate, "reminder_preferences", None)
             if pref:
                 if not pref.push_notifications or not getattr(
@@ -447,7 +644,6 @@ class NotificationService:
                     )
                     continue
 
-            # Idempotency check: Reuse existing notification record if already dispatched for this event
             existing_query = NotificationHistory.objects.filter(
                 user=advocate,
                 category="JUDGMENT",
@@ -526,18 +722,7 @@ class NotificationService:
         advocates: list[Any] | None = None,
         changed_by: Any | None = None,
     ) -> list[NotificationHistory]:
-        """Dispatch push notifications to tracking advocates when a hearing status or parameter changes.
-
-        Supported change types:
-        - RESCHEDULED: Appearance date/time rescheduled
-        - ADJOURNED: Matter adjourned with next date
-        - CANCELLED: Appearance cancelled
-        - COURT_HALL_CHANGED: Relocated court hall or item number
-        - PROCEEDINGS_RECORDED: Post-hearing business conducted entered
-
-        Idempotent: Avoids duplicate dispatches for the same hearing change state.
-        Respects advocate preferences for push notifications.
-        """
+        """Dispatch push notifications to tracking advocates when a hearing status or parameter changes."""
         case = hearing.case
         target_advocates = advocates if advocates is not None else list(case.tracked_by.all())
         if not target_advocates:
@@ -546,7 +731,6 @@ class NotificationService:
         case_ref = f"{case.case_type} {case.case_number}/{case.filing_year}"
         dtls = details or {}
 
-        # Contextual title and body based on change type
         if change_type == "RESCHEDULED":
             old_str = dtls.get("old_date", "")
             if dtls.get("old_time"):
@@ -557,7 +741,6 @@ class NotificationService:
             reason_str = f" ({dtls.get('reason')})" if dtls.get("reason") else ""
             title = f"Hearing Rescheduled: {case_ref}"
             body = f"Hearing for {case_ref} rescheduled from {old_str} to {new_str}.{reason_str}"
-
         elif change_type == "ADJOURNED":
             next_date = dtls.get("next_date") or hearing.next_date
             next_str = f" Next date posted to {next_date}." if next_date else " Matter adjourned."
@@ -565,17 +748,14 @@ class NotificationService:
             body = (
                 f"Hearing appearance for {case_ref} on {hearing.hearing_date} adjourned.{next_str}"
             )
-
         elif change_type == "CANCELLED":
             title = f"Hearing Cancelled: {case_ref}"
             body = f"Scheduled hearing appearance for {case_ref} on {hearing.hearing_date} has been cancelled."
-
         elif change_type == "COURT_HALL_CHANGED":
             hall_info = f"Court Hall {hearing.court_hall_number or '—'}"
             item_info = f", Item #{hearing.item_number}" if hearing.item_number else ""
             title = f"Court Hall Updated: {case_ref}"
             body = f"Hearing for {case_ref} on {hearing.hearing_date} relocated to {hall_info}{item_info}."
-
         elif change_type == "PROCEEDINGS_RECORDED":
             title = f"Proceedings Recorded: {case_ref}"
             proceedings_text = (
@@ -584,14 +764,12 @@ class NotificationService:
                 else "Orders entered."
             )
             body = f"Hearing proceedings recorded for {case_ref}: {proceedings_text}"
-
         else:
             title = f"Hearing Updated: {case_ref}"
             body = f"Hearing on {hearing.hearing_date} for {case_ref} has been updated."
 
         created_notifications: list[NotificationHistory] = []
         for advocate in target_advocates:
-            # Check advocate preferences
             pref = getattr(advocate, "reminder_preferences", None)
             if pref:
                 if not pref.push_notifications or not getattr(
@@ -603,7 +781,6 @@ class NotificationService:
                     )
                     continue
 
-            # Idempotency check: Ensure same hearing change state isn't dispatched repeatedly
             existing_query = NotificationHistory.objects.filter(
                 user=advocate,
                 category="HEARING_CHANGE",
