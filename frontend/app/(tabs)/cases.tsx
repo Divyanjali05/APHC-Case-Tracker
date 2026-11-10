@@ -8,19 +8,24 @@ import {
   TouchableOpacity,
   ScrollView,
   RefreshControl,
-  Alert,
   Linking,
+  useWindowDimensions,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { ScreenContainer } from '../../components/common/ScreenContainer';
+import { Badge } from '../../components/common/Badge';
+import { AppIcon } from '../../components/common/AppIcon';
+import { SkeletonCard } from '../../components/common/SkeletonCard';
+import { ErrorState } from '../../components/common/ErrorState';
+import { EmptyState } from '../../components/common/EmptyState';
+import { useToast } from '../../components/common/Toast';
 import { CaseCard } from '../../components/cases/CaseCard';
 import { JudgmentDetailsModal } from '../../components/cases/JudgmentDetailsModal';
 import { VoiceInputModal } from '../../components/speech/VoiceInputModal';
-import { LoadingIndicator } from '../../components/common/LoadingIndicator';
-import { EmptyState } from '../../components/common/EmptyState';
 import { OfflineBanner } from '../../components/offline/OfflineBanner';
 import { Colors } from '../../constants/colors';
+import { Radius, Shadows, Spacing } from '../../constants/theme';
 import { useCases } from '../../features/cases/hooks';
 import { normalizeVoiceQuery } from '../../services/speech/voiceQueryNormalizer';
 import { CaseItem } from '../../types';
@@ -31,14 +36,30 @@ import { tokenStorage } from '../../services/auth/tokenStorage';
 type FilterType = 'ALL' | 'UPCOMING' | 'ADJOURNED' | 'WITH_JUDGMENT' | 'WITHOUT_JUDGMENT';
 type SortType = 'CASE_DATE' | 'NEXT_HEARING' | 'JUDGMENT_DATE' | 'CASE_NAME';
 
+const VALID_FILTERS: FilterType[] = [
+  'ALL',
+  'UPCOMING',
+  'ADJOURNED',
+  'WITH_JUDGMENT',
+  'WITHOUT_JUDGMENT',
+];
+
 export default function CasesScreen() {
   const { t } = useTranslation();
   const router = useRouter();
-  const params = useLocalSearchParams<{ search?: string }>();
+  const params = useLocalSearchParams<{ search?: string; filter?: string }>();
+  const { width } = useWindowDimensions();
+  const isDesktop = width >= 1024;
+  const { showToast } = useToast();
   const { data: cases, isLoading, isError, refetch, isRefetching } = useCases();
 
+  const initialFilter =
+    params.filter && VALID_FILTERS.includes(params.filter as FilterType)
+      ? (params.filter as FilterType)
+      : 'ALL';
+
   const [searchQuery, setSearchQuery] = useState(params.search || '');
-  const [activeFilter, setActiveFilter] = useState<FilterType>('ALL');
+  const [activeFilter, setActiveFilter] = useState<FilterType>(initialFilter);
   const [sortBy, setSortBy] = useState<SortType>('CASE_DATE');
   const [sortAsc, setSortAsc] = useState(false);
 
@@ -49,6 +70,13 @@ export default function CasesScreen() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.search]);
+
+  // Sync route filter param when navigating from dashboard StatCards
+  useEffect(() => {
+    if (params.filter && VALID_FILTERS.includes(params.filter as FilterType)) {
+      setActiveFilter(params.filter as FilterType);
+    }
+  }, [params.filter]);
 
   // Judgment Modal State
   const [selectedCaseForJudgment, setSelectedCaseForJudgment] = useState<CaseItem | null>(
@@ -62,24 +90,22 @@ export default function CasesScreen() {
     try {
       setIsExportingCsv(true);
       const token = await tokenStorage.getAccessToken();
-      const exportUrl = `${API_BASE_URL}${ENDPOINTS.CASES.EXPORT_CSV}?token=${token || ''}`;
+      const exportUrl = `${API_BASE_URL}${ENDPOINTS.CASES.EXPORT_CSV}?token=${
+        token || ''
+      }`;
       const canOpen = await Linking.canOpenURL(exportUrl);
       if (canOpen) {
         await Linking.openURL(exportUrl);
       } else {
-        Alert.alert(
-          t('export.exportSuccess', 'Export Complete'),
-          t('export.downloadedNotice', 'Cases CSV export available.')
-        );
+        showToast(t('export.downloadedNotice', 'Cases CSV export available.'), 'success');
       }
     } catch {
-      Alert.alert(t('common.error', 'Error'), t('export.exportFailed', 'Failed to generate CSV export.'));
+      showToast(t('export.exportFailed', 'Failed to generate CSV export.'), 'error');
     } finally {
       setIsExportingCsv(false);
     }
   };
 
-  // Filter chips configuration
   const filterOptions: { key: FilterType; labelKey: string; fallback: string }[] = [
     { key: 'ALL', labelKey: 'cases.filterAll', fallback: 'All' },
     { key: 'UPCOMING', labelKey: 'cases.filterUpcoming', fallback: 'Upcoming' },
@@ -96,7 +122,6 @@ export default function CasesScreen() {
     },
   ];
 
-  // Sorting options
   const sortOptions: { key: SortType; labelKey: string; fallback: string }[] = [
     { key: 'CASE_DATE', labelKey: 'cases.sortCaseDate', fallback: 'Case Date' },
     { key: 'NEXT_HEARING', labelKey: 'cases.sortNextHearing', fallback: 'Next Hearing' },
@@ -108,7 +133,6 @@ export default function CasesScreen() {
     { key: 'CASE_NAME', labelKey: 'cases.sortCaseName', fallback: 'Case Name' },
   ];
 
-  // Filter and sort cases pipeline
   const processedCases = useMemo(() => {
     const rawList: CaseItem[] = Array.isArray(cases)
       ? cases
@@ -117,7 +141,6 @@ export default function CasesScreen() {
         : [];
     let result: CaseItem[] = rawList.slice();
 
-    // 1. Text Search (with Multilingual / Indic numeral normalization)
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
       const normResult = normalizeVoiceQuery(searchQuery);
@@ -142,7 +165,6 @@ export default function CasesScreen() {
       });
     }
 
-    // 2. Status Filters
     if (activeFilter === 'UPCOMING') {
       result = result.filter(item => {
         const status = (item.status || item.current_stage || '').toLowerCase();
@@ -159,7 +181,6 @@ export default function CasesScreen() {
       result = result.filter(item => !item.judgment_date && !item.latest_judgment);
     }
 
-    // 3. Sorting
     result.sort((a, b) => {
       let comparison = 0;
       if (sortBy === 'CASE_DATE') {
@@ -201,147 +222,187 @@ export default function CasesScreen() {
   return (
     <ScreenContainer testID="cases-screen">
       <OfflineBanner onSyncComplete={refetch} />
-      {/* Header Action Bar with CSV Export */}
-      <View style={styles.headerActionBar}>
-        <Text style={styles.caseCountText}>
-          {t('cases.title', 'My Tracked Cases')} ({processedCases.length})
-        </Text>
-        <TouchableOpacity
-          style={styles.exportCsvBtn}
-          onPress={handleExportCsv}
-          disabled={isExportingCsv}
-          testID="export-cases-csv-button"
-        >
-          <Text style={styles.exportCsvText}>
-            {isExportingCsv ? '...' : `📥 ${t('export.exportCsv', 'Export CSV')}`}
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Search Input with Voice Search Button */}
-      <View style={styles.searchContainer}>
-        <TextInput
-          style={styles.searchInput}
-          placeholder={t(
-            'cases.searchPlaceholder',
-            'Search by Case Type, Number or Party...'
-          )}
-          placeholderTextColor={Colors.text.muted}
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          clearButtonMode="while-editing"
-          testID="cases-search-input"
-        />
-        <TouchableOpacity
-          style={styles.voiceSearchButton}
-          onPress={() => setIsVoiceModalVisible(true)}
-          testID="cases-voice-mic-button"
-          accessibilityLabel={t('voice.openVoiceSearch', 'Voice search')}
-          accessibilityRole="button"
-        >
-          <Text style={styles.voiceSearchButtonText}>🎤</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Filter Chips Bar */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.filterScroll}
-        contentContainerStyle={styles.filterContainer}
-        testID="cases-filter-bar"
-      >
-        {filterOptions.map(f => (
+      <View style={[styles.mainWrapper, isDesktop && styles.desktopContainer]}>
+        {/* Header Action Bar with CSV Export */}
+        <View style={styles.headerActionBar}>
+          <View style={styles.titleWithBadge}>
+            <Text style={styles.caseCountText}>{t('cases.myCases', 'My Cases')}</Text>
+            <Badge label={String(processedCases.length)} variant="primary" />
+          </View>
           <TouchableOpacity
-            key={f.key}
-            style={[styles.filterChip, activeFilter === f.key && styles.filterChipActive]}
-            onPress={() => setActiveFilter(f.key)}
-            testID={`filter-chip-${f.key.toLowerCase()}`}
+            style={styles.exportCsvBtn}
+            onPress={handleExportCsv}
+            disabled={isExportingCsv}
+            testID="export-cases-csv-button"
+            accessibilityRole="button"
+            accessibilityLabel={t('export.exportCsv', 'Export CSV')}
           >
-            <Text
-              style={[
-                styles.filterChipText,
-                activeFilter === f.key && styles.filterChipTextActive,
-              ]}
-            >
-              {t(f.labelKey, f.fallback)}
+            <AppIcon name="download" size={14} color={Colors.primary} />
+            <Text style={styles.exportCsvText}>
+              {isExportingCsv ? '...' : t('export.exportCsv', 'Export CSV')}
             </Text>
           </TouchableOpacity>
-        ))}
-      </ScrollView>
+        </View>
 
-      {/* Sorting Controls */}
-      <View style={styles.sortBar} testID="cases-sort-bar">
-        <Text style={styles.sortLabel}>{t('cases.sortBy', 'Sort By')}:</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          {sortOptions.map(s => {
-            const isSelected = sortBy === s.key;
-            return (
-              <TouchableOpacity
-                key={s.key}
-                style={[styles.sortChip, isSelected && styles.sortChipActive]}
-                onPress={() => {
-                  if (isSelected) {
-                    setSortAsc(!sortAsc);
-                  } else {
-                    setSortBy(s.key);
-                    setSortAsc(false);
-                  }
-                }}
-                testID={`sort-option-${s.key.toLowerCase()}`}
+        {/* Search Input with Voice Search Button */}
+        <View style={styles.searchContainer}>
+          <View style={styles.searchInputWrap}>
+            <AppIcon name="search" size={16} color={Colors.text.muted} />
+            <TextInput
+              style={styles.searchInput}
+              placeholder={t(
+                'cases.searchPlaceholder',
+                'Search by Case Type, Number or Party...'
+              )}
+              placeholderTextColor={Colors.text.muted}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              clearButtonMode="while-editing"
+              testID="cases-search-input"
+            />
+          </View>
+          <TouchableOpacity
+            style={styles.voiceSearchButton}
+            onPress={() => setIsVoiceModalVisible(true)}
+            testID="cases-voice-mic-button"
+            accessibilityLabel={t('voice.openVoiceSearch', 'Voice search')}
+            accessibilityRole="button"
+          >
+            <AppIcon name="mic" size={18} color={Colors.primary} />
+          </TouchableOpacity>
+        </View>
+
+        {/* Filter Chips Bar */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.filterScroll}
+          contentContainerStyle={styles.filterContainer}
+          testID="cases-filter-bar"
+        >
+          {filterOptions.map(f => (
+            <TouchableOpacity
+              key={f.key}
+              style={[
+                styles.filterChip,
+                activeFilter === f.key && styles.filterChipActive,
+              ]}
+              onPress={() => setActiveFilter(f.key)}
+              testID={`filter-chip-${f.key.toLowerCase()}`}
+              accessibilityRole="button"
+            >
+              <Text
+                style={[
+                  styles.filterChipText,
+                  activeFilter === f.key && styles.filterChipTextActive,
+                ]}
               >
-                <Text
-                  style={[styles.sortChipText, isSelected && styles.sortChipTextActive]}
-                >
-                  {t(s.labelKey, s.fallback)} {isSelected ? (sortAsc ? '↑' : '↓') : ''}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
+                {t(f.labelKey, f.fallback)}
+              </Text>
+            </TouchableOpacity>
+          ))}
         </ScrollView>
-      </View>
 
-      {/* Body States */}
-      {isLoading ? (
-        <LoadingIndicator message={t('common.loading', 'Loading...')} />
-      ) : isError ? (
-        <EmptyState
-          title="Could Not Load Cases"
-          description="Unable to connect to the APHC docket service. Please verify your connection."
-          actionLabel={t('common.retry', 'Retry')}
-          onAction={() => refetch()}
-          testID="cases-error-state"
-        />
-      ) : processedCases.length === 0 ? (
-        <EmptyState
-          title={t('cases.empty', 'No cases found')}
-          description="Search returned no matching cases, or no cases match the selected filter."
-          testID="cases-empty-state"
-        />
-      ) : (
-        <FlatList
-          data={processedCases}
-          keyExtractor={item => item.id.toString()}
-          renderItem={({ item }) => (
-            <CaseCard
-              item={item}
-              onPress={handleSelectCase}
-              onViewJudgment={handleOpenJudgment}
-            />
-          )}
-          contentContainerStyle={styles.listContent}
-          showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl
-              refreshing={isRefetching}
-              onRefresh={refetch}
-              tintColor={Colors.primaryLight}
-              colors={[Colors.primary]}
-            />
-          }
-          testID="cases-list"
-        />
-      )}
+        {/* Sorting Controls */}
+        <View style={styles.sortBar} testID="cases-sort-bar">
+          <Text style={styles.sortLabel}>{t('cases.sortBy', 'Sort By')}:</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            {sortOptions.map(s => {
+              const isSelected = sortBy === s.key;
+              return (
+                <TouchableOpacity
+                  key={s.key}
+                  style={[styles.sortChip, isSelected && styles.sortChipActive]}
+                  onPress={() => {
+                    if (isSelected) {
+                      setSortAsc(!sortAsc);
+                    } else {
+                      setSortBy(s.key);
+                      setSortAsc(false);
+                    }
+                  }}
+                  testID={`sort-option-${s.key.toLowerCase()}`}
+                  accessibilityRole="button"
+                >
+                  <View style={styles.sortChipInner}>
+                    <Text
+                      style={[
+                        styles.sortChipText,
+                        isSelected && styles.sortChipTextActive,
+                      ]}
+                    >
+                      {t(s.labelKey, s.fallback)}
+                    </Text>
+                    {isSelected ? (
+                      <AppIcon
+                        name={sortAsc ? 'chevron-up' : 'chevron-down'}
+                        size={13}
+                        color={Colors.primary}
+                      />
+                    ) : null}
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+
+        {/* Body States */}
+        {isLoading ? (
+          <View testID="cases-loading-skeleton">
+            <SkeletonCard variant="list-item" count={3} />
+            <Text style={styles.loadingText}>{t('common.loading', 'Loading...')}</Text>
+          </View>
+        ) : isError ? (
+          <ErrorState
+            title="Could Not Load Cases"
+            message="Unable to connect to the APHC docket service. Please verify your connection."
+            retryLabel={t('common.retry', 'Retry')}
+            onRetry={() => refetch()}
+            testID="cases-error-state"
+            retryTestID="cases-retry-button"
+          />
+        ) : processedCases.length === 0 ? (
+          <EmptyState
+            title={t('cases.empty', 'No Cases Found')}
+            description={
+              searchQuery.trim()
+                ? `No matters match "${searchQuery}". Clear your search query or reset your filters.`
+                : 'No cases match the selected filter criteria.'
+            }
+            actionLabel={searchQuery.trim() ? 'Clear Search' : 'Show All Cases'}
+            onAction={() => {
+              setSearchQuery('');
+              setActiveFilter('ALL');
+            }}
+            iconName="briefcase"
+            testID="cases-empty-state"
+          />
+        ) : (
+          <FlatList
+            data={processedCases}
+            keyExtractor={item => item.id.toString()}
+            renderItem={({ item }) => (
+              <CaseCard
+                item={item}
+                onPress={handleSelectCase}
+                onViewJudgment={handleOpenJudgment}
+              />
+            )}
+            contentContainerStyle={styles.listContent}
+            showsVerticalScrollIndicator={false}
+            refreshControl={
+              <RefreshControl
+                refreshing={isRefetching}
+                onRefresh={refetch}
+                tintColor={Colors.primary}
+                colors={[Colors.primary]}
+              />
+            }
+            testID="cases-list"
+          />
+        )}
+      </View>
 
       {/* Judgment Details Modal */}
       <JudgmentDetailsModal
@@ -362,25 +423,44 @@ export default function CasesScreen() {
 }
 
 const styles = StyleSheet.create({
+  mainWrapper: {
+    flex: 1,
+    width: '100%',
+  },
+  desktopContainer: {
+    maxWidth: 1200,
+    alignSelf: 'center',
+    width: '100%',
+  },
   headerActionBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: Spacing.md,
     paddingHorizontal: 2,
   },
+  titleWithBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
   caseCountText: {
-    fontSize: 15,
+    fontSize: 18,
     fontWeight: '700',
     color: Colors.text.primary,
   },
   exportCsvBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
     backgroundColor: Colors.surface,
     borderColor: Colors.border,
     borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    borderRadius: Radius.badge + 2,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    minHeight: 38,
+    ...Shadows.subtle,
   },
   exportCsvText: {
     fontSize: 12,
@@ -390,36 +470,42 @@ const styles = StyleSheet.create({
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    marginBottom: 10,
+    gap: Spacing.sm,
+    marginBottom: Spacing.md,
   },
-  searchInput: {
+  searchInputWrap: {
     flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
     backgroundColor: Colors.surface,
     borderColor: Colors.border,
     borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    borderRadius: Radius.input,
+    paddingHorizontal: Spacing.md,
+    minHeight: 48,
+    ...Shadows.subtle,
+  },
+  searchInput: {
+    flex: 1,
     color: Colors.text.primary,
     fontSize: 14,
+    paddingVertical: 10,
   },
   voiceSearchButton: {
     backgroundColor: Colors.surface,
     borderColor: Colors.border,
     borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    borderRadius: Radius.input,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  voiceSearchButtonText: {
-    fontSize: 16,
+    minHeight: 48,
+    minWidth: 48,
+    ...Shadows.subtle,
   },
   filterScroll: {
-    maxHeight: 38,
-    marginBottom: 8,
+    maxHeight: 44,
+    marginBottom: 10,
   },
   filterContainer: {
     flexDirection: 'row',
@@ -427,16 +513,19 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
   },
   filterChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: Radius.pill,
     backgroundColor: Colors.surface,
     borderColor: Colors.border,
     borderWidth: 1,
+    minHeight: 36,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   filterChipActive: {
     backgroundColor: Colors.primary,
-    borderColor: Colors.primaryLight,
+    borderColor: Colors.primary,
   },
   filterChipText: {
     color: Colors.text.secondary,
@@ -444,41 +533,56 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   filterChipTextActive: {
-    color: Colors.text.primary,
+    color: Colors.text.white,
     fontWeight: '700',
   },
   sortBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 14,
     paddingHorizontal: 2,
   },
   sortLabel: {
     color: Colors.text.muted,
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '600',
     marginRight: 8,
   },
   sortChip: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
     backgroundColor: Colors.surface,
-    marginRight: 6,
+    marginRight: 8,
     borderWidth: 1,
     borderColor: Colors.border,
+    minHeight: 38,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   sortChipActive: {
-    borderColor: Colors.gold,
-    backgroundColor: 'rgba(212, 175, 55, 0.12)',
+    borderColor: Colors.primary,
+    backgroundColor: Colors.surfaceBlue,
+  },
+  sortChipInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
   },
   sortChipText: {
-    color: Colors.text.muted,
-    fontSize: 11,
+    color: Colors.text.secondary,
+    fontSize: 12,
+    fontWeight: '500',
   },
   sortChipTextActive: {
-    color: Colors.gold,
+    color: Colors.primary,
     fontWeight: '700',
+  },
+  loadingText: {
+    color: Colors.text.muted,
+    fontSize: 12,
+    textAlign: 'center',
+    marginTop: Spacing.xs,
   },
   listContent: {
     paddingBottom: 24,

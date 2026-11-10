@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from rest_framework import generics, permissions, status
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -34,17 +35,26 @@ class TokenAlertRuleListCreateView(generics.ListCreateAPIView):
         return TokenAlertRuleSerializer
 
     def get_queryset(self):
-        qs = TokenAlertRule.objects.filter(advocate=self.request.user).select_related(
-            "court_hall", "case"
-        )
+        qs = TokenAlertRule.objects.filter(
+            advocate=self.request.user,
+            case__tracked_by=self.request.user,
+        ).select_related("court_hall", "case")
         # Optional filters
         case_id = self.request.query_params.get("case_id")
         if case_id:
-            qs = qs.filter(case_id=case_id)
+            try:
+                qs = qs.filter(case_id=int(case_id))
+            except (TypeError, ValueError) as exc:
+                raise ValidationError({"case_id": "case_id must be a valid integer."}) from exc
 
         court_hall_id = self.request.query_params.get("court_hall_id")
         if court_hall_id:
-            qs = qs.filter(court_hall_id=court_hall_id)
+            try:
+                qs = qs.filter(court_hall_id=int(court_hall_id))
+            except (TypeError, ValueError) as exc:
+                raise ValidationError(
+                    {"court_hall_id": "court_hall_id must be a valid integer."}
+                ) from exc
 
         is_active = self.request.query_params.get("is_active")
         if is_active is not None:
@@ -87,9 +97,10 @@ class TokenAlertRuleDetailView(generics.RetrieveUpdateDestroyAPIView):
         return TokenAlertRuleSerializer
 
     def get_queryset(self):
-        return TokenAlertRule.objects.filter(advocate=self.request.user).select_related(
-            "court_hall", "case"
-        )
+        return TokenAlertRule.objects.filter(
+            advocate=self.request.user,
+            case__tracked_by=self.request.user,
+        ).select_related("court_hall", "case")
 
     def perform_destroy(self, instance):
         # Soft-cancel rather than hard delete to preserve history
@@ -103,7 +114,11 @@ class TokenAlertRuleCancelView(APIView):
 
     def post(self, request, pk: int):
         try:
-            alert = TokenAlertRule.objects.get(pk=pk, advocate=request.user)
+            alert = TokenAlertRule.objects.get(
+                pk=pk,
+                advocate=request.user,
+                case__tracked_by=request.user,
+            )
         except TokenAlertRule.DoesNotExist:
             return Response({"detail": "Token alert not found."}, status=status.HTTP_404_NOT_FOUND)
 
@@ -118,7 +133,11 @@ class TokenAlertRuleSyncView(APIView):
 
     def post(self, request, pk: int):
         try:
-            alert = TokenAlertRule.objects.get(pk=pk, advocate=request.user)
+            alert = TokenAlertRule.objects.get(
+                pk=pk,
+                advocate=request.user,
+                case__tracked_by=request.user,
+            )
         except TokenAlertRule.DoesNotExist:
             return Response({"detail": "Token alert not found."}, status=status.HTTP_404_NOT_FOUND)
 

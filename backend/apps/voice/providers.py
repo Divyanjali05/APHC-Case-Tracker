@@ -69,7 +69,9 @@ class MockSpeechToTextProvider(SpeechToTextProvider):
         ),
     }
 
-    def __init__(self, should_fail: bool = False, failure_reason: str = "Mock STT failure simulation") -> None:
+    def __init__(
+        self, should_fail: bool = False, failure_reason: str = "Mock STT failure simulation"
+    ) -> None:
         self.should_fail = should_fail
         self.failure_reason = failure_reason
 
@@ -117,7 +119,9 @@ class GoogleCloudSpeechToTextProvider(SpeechToTextProvider):
         # from google.cloud import speech_v1p1beta1 as speech
         # client = speech.SpeechClient.from_service_account_json(self.credentials_path)
         # ...
-        raise NotImplementedError("Live Google Cloud Speech-to-Text provider integration pending credentials.")
+        raise NotImplementedError(
+            "Live Google Cloud Speech-to-Text provider integration pending credentials."
+        )
 
 
 # Global singleton override for testing
@@ -140,4 +144,3 @@ def get_speech_to_text_provider() -> SpeechToTextProvider:
         return GoogleCloudSpeechToTextProvider()
 
     return MockSpeechToTextProvider()
-

@@ -12,6 +12,7 @@ import { syncQueue, QueueItem } from '../../services/offline/syncQueue';
 import { syncEngine } from '../../services/offline/syncEngine';
 import { tokenStorage } from '../../services/auth/tokenStorage';
 import { Colors } from '../../constants/colors';
+import { AppIcon } from '../common/AppIcon';
 
 export interface OfflineBannerProps {
   onSyncComplete?: () => void;
@@ -144,8 +145,9 @@ export const OfflineBanner: React.FC<OfflineBannerProps> = ({ onSyncComplete }) 
       {/* Conflict Alert Banner */}
       {hasConflicts ? (
         <View style={styles.conflictBanner} testID="offline-conflict-alert">
+          <AppIcon name="alert-triangle" size={14} color={Colors.danger} />
           <Text style={styles.conflictText}>
-            ⚠️ Sync Conflict:{' '}
+            Sync Conflict:{' '}
             {conflictItems[0].error_message || 'Court record changed on server.'}
           </Text>
         </View>
@@ -156,13 +158,13 @@ export const OfflineBanner: React.FC<OfflineBannerProps> = ({ onSyncComplete }) 
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#1E293B',
-    borderRadius: 8,
+    backgroundColor: Colors.surfaceSubtle,
+    borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 8,
     marginBottom: 10,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: Colors.border,
   },
   statusRow: {
     flexDirection: 'row',
@@ -181,24 +183,24 @@ const styles = StyleSheet.create({
     marginRight: 6,
   },
   dotOnline: {
-    backgroundColor: '#10B981', // emerald green
+    backgroundColor: Colors.success,
   },
   dotOffline: {
-    backgroundColor: '#F59E0B', // amber yellow
+    backgroundColor: Colors.warning,
   },
   statusText: {
-    color: '#F8FAFC',
+    color: Colors.text.primary,
     fontSize: 12,
     fontWeight: '700',
   },
   divider: {
-    color: '#64748B',
+    color: Colors.text.muted,
     marginHorizontal: 6,
     fontSize: 12,
   },
   lastSyncedText: {
-    color: '#94A3B8',
-    fontSize: 11,
+    color: Colors.text.secondary,
+    fontSize: 12,
   },
   actionGroup: {
     flexDirection: 'row',
@@ -206,37 +208,42 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   pendingBadge: {
-    backgroundColor: '#3B82F6',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
     borderRadius: 10,
   },
   pendingBadgeText: {
-    color: '#FFFFFF',
-    fontSize: 10,
+    color: Colors.text.white,
+    fontSize: 12,
     fontWeight: '700',
   },
   retryButton: {
     backgroundColor: Colors.primary,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     borderRadius: 6,
   },
   retryButtonText: {
-    color: '#FFFFFF',
-    fontSize: 11,
+    color: Colors.text.white,
+    fontSize: 12,
     fontWeight: '600',
   },
   conflictBanner: {
-    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: Colors.dangerSurface,
     borderLeftWidth: 3,
-    borderLeftColor: '#EF4444',
-    padding: 6,
+    borderLeftColor: Colors.danger,
+    padding: 8,
     marginTop: 6,
-    borderRadius: 4,
+    borderRadius: 6,
   },
   conflictText: {
-    color: '#FCA5A5',
-    fontSize: 11,
+    flex: 1,
+    color: Colors.danger,
+    fontSize: 12,
+    fontWeight: '600',
   },
 });

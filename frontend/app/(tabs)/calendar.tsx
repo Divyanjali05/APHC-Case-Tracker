@@ -4,11 +4,10 @@ import {
   Linking,
   Platform,
   StyleSheet,
-  Text,
   View,
+  useWindowDimensions,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
-import { Colors } from '../../constants/colors';
 import { CalendarDayView } from '../../components/calendar/CalendarDayView';
 import { CalendarHeader } from '../../components/calendar/CalendarHeader';
 import { CalendarMonthView } from '../../components/calendar/CalendarMonthView';
@@ -16,8 +15,11 @@ import { CalendarSyncModal } from '../../components/calendar/CalendarSyncModal';
 import { CalendarWeekView } from '../../components/calendar/CalendarWeekView';
 import { EventDetailModal } from '../../components/calendar/EventDetailModal';
 import { PersonalReminderModal } from '../../components/calendar/PersonalReminderModal';
-import { LoadingIndicator } from '../../components/common/LoadingIndicator';
+import { SkeletonCard } from '../../components/common/SkeletonCard';
+import { ErrorState } from '../../components/common/ErrorState';
 import { ScreenContainer } from '../../components/common/ScreenContainer';
+import { useToast } from '../../components/common/Toast';
+import { Spacing } from '../../constants/theme';
 import {
   useCalendarSyncStatus,
   useConnectCalendarSync,
@@ -39,6 +41,9 @@ import {
 
 export default function CalendarScreen() {
   const { t } = useTranslation();
+  const { width } = useWindowDimensions();
+  const isDesktop = width >= 960;
+  const { showToast } = useToast();
 
   const getTodayStr = () => new Date().toISOString().split('T')[0];
 
@@ -69,7 +74,6 @@ export default function CalendarScreen() {
   const triggerSyncMutation = useTriggerCalendarSync();
   const disconnectSyncMutation = useDisconnectCalendarSync();
 
-  // Navigation handlers
   const handlePrev = () => {
     const cur = new Date(selectedDate);
     if (currentView === 'day') {
@@ -98,7 +102,6 @@ export default function CalendarScreen() {
     setSelectedDate(getTodayStr());
   };
 
-  // Event handlers
   const handleSelectEvent = (event: AgendaEventUnion) => {
     setSelectedEvent(event);
     setDetailModalVisible(true);
@@ -112,35 +115,35 @@ export default function CalendarScreen() {
           is_completed: !reminder.is_completed,
         },
       });
+      showToast(
+        !reminder.is_completed ? 'Reminder marked as complete.' : 'Reminder reopened.',
+        'success'
+      );
       refetch();
     } catch {
-      Alert.alert(t('common.error', 'Error'), 'Failed to update reminder status.');
+      showToast('Failed to update reminder status.', 'error');
     }
   };
 
   const handleSaveReminder = async (payload: CreatePersonalReminderPayload) => {
     await createReminderMutation.mutateAsync(payload);
+    showToast('Personal reminder added to diary.', 'success');
     refetch();
   };
 
   const handleConnectSync = async (payload: CalendarSyncConnectPayload) => {
     await connectSyncMutation.mutateAsync(payload);
+    showToast('External calendar connected.', 'success');
   };
 
   const handleTriggerSync = async () => {
     const res = await triggerSyncMutation.mutateAsync();
-    Alert.alert(
-      t('calendar.sync_complete', 'Sync Complete'),
-      res.message || 'Events synchronized successfully.'
-    );
+    showToast(res.message || 'Events synchronized successfully.', 'success');
   };
 
   const handleDisconnectSync = async () => {
     await disconnectSyncMutation.mutateAsync();
-    Alert.alert(
-      t('calendar.disconnected', 'Disconnected'),
-      'External calendar synchronization disabled.'
-    );
+    showToast('External calendar synchronization disabled.', 'info');
   };
 
   const handleExportIcs = async () => {
@@ -163,58 +166,64 @@ export default function CalendarScreen() {
         }
       }
     } catch {
-      Alert.alert(t('common.error', 'Error'), 'Failed to download iCalendar export.');
+      showToast('Failed to download iCalendar export.', 'error');
     }
   };
 
   return (
     <ScreenContainer testID="calendar-screen">
-      {/* Header with View Switcher & Nav */}
-      <CalendarHeader
-        currentView={currentView}
-        onViewChange={setCurrentView}
-        selectedDate={selectedDate}
-        onPrev={handlePrev}
-        onNext={handleNext}
-        onToday={handleToday}
-        onOpenAddReminder={() => setAddReminderVisible(true)}
-        onOpenSync={() => setSyncModalVisible(true)}
-      />
+      <View style={[styles.mainWrapper, isDesktop && styles.desktopContainer]}>
+        {/* Header with View Switcher & Nav */}
+        <CalendarHeader
+          currentView={currentView}
+          onViewChange={setCurrentView}
+          selectedDate={selectedDate}
+          onPrev={handlePrev}
+          onNext={handleNext}
+          onToday={handleToday}
+          onOpenAddReminder={() => setAddReminderVisible(true)}
+          onOpenSync={() => setSyncModalVisible(true)}
+        />
 
-      {/* Main Content Area */}
-      {isLoading && !agenda ? (
-        <View style={styles.centerContainer}>
-          <LoadingIndicator />
-        </View>
-      ) : error && !agenda ? (
-        <View style={styles.centerContainer}>
-          <Text style={styles.errorText}>
-            {t('calendar.load_error', 'Failed to load calendar agenda.')}
-          </Text>
-        </View>
-      ) : agenda ? (
-        currentView === 'day' ? (
-          <CalendarDayView
-            agenda={agenda}
-            onSelectEvent={handleSelectEvent}
-            onToggleCompleteReminder={handleToggleCompleteReminder}
-          />
-        ) : currentView === 'week' ? (
-          <CalendarWeekView
-            agenda={agenda}
-            selectedDate={selectedDate}
-            onSelectDate={setSelectedDate}
-            onSelectEvent={handleSelectEvent}
-          />
-        ) : (
-          <CalendarMonthView
-            agenda={agenda}
-            selectedDate={selectedDate}
-            onSelectDate={setSelectedDate}
-            onSelectEvent={handleSelectEvent}
-          />
-        )
-      ) : null}
+        {/* Main Content Area */}
+        {isLoading && !agenda ? (
+          <View style={styles.stateContainer} testID="calendar-loading-skeleton">
+            <SkeletonCard variant="card" count={2} />
+          </View>
+        ) : error && !agenda ? (
+          <View style={styles.stateContainer}>
+            <ErrorState
+              title={t('calendar.load_error', 'Failed to load calendar agenda.')}
+              message="Unable to synchronize court calendar and reminders."
+              retryLabel={t('common.retry', 'Retry')}
+              onRetry={() => refetch()}
+              testID="calendar-error-state"
+            />
+          </View>
+        ) : agenda ? (
+          currentView === 'day' ? (
+            <CalendarDayView
+              agenda={agenda}
+              onSelectEvent={handleSelectEvent}
+              onToggleCompleteReminder={handleToggleCompleteReminder}
+            />
+          ) : currentView === 'week' ? (
+            <CalendarWeekView
+              agenda={agenda}
+              selectedDate={selectedDate}
+              onSelectDate={setSelectedDate}
+              onSelectEvent={handleSelectEvent}
+            />
+          ) : (
+            <CalendarMonthView
+              agenda={agenda}
+              selectedDate={selectedDate}
+              onSelectDate={setSelectedDate}
+              onSelectEvent={handleSelectEvent}
+            />
+          )
+        ) : null}
+      </View>
 
       {/* Modals */}
       <EventDetailModal
@@ -250,16 +259,16 @@ export default function CalendarScreen() {
 }
 
 const styles = StyleSheet.create({
-  centerContainer: {
+  mainWrapper: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
+    width: '100%',
   },
-  errorText: {
-    color: Colors.danger,
-    fontSize: 14,
-    textAlign: 'center',
+  desktopContainer: {
+    maxWidth: 1120,
+    alignSelf: 'center',
+    width: '100%',
+  },
+  stateContainer: {
+    paddingTop: Spacing.md,
   },
 });
-

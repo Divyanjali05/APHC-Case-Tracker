@@ -1,13 +1,8 @@
 import React from 'react';
-import {
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { Colors } from '../../constants/colors';
+import { AppIcon } from '../common/AppIcon';
 import { Badge } from '../common/Badge';
 import { Card } from '../common/Card';
 import {
@@ -71,12 +66,17 @@ export const CalendarDayView: React.FC<CalendarDayViewProps> = ({
 
       {!hasEvents ? (
         <View style={styles.emptyContainer} testID="day-view-empty">
-          <Text style={styles.emptyIcon}>📅</Text>
+          <View style={styles.emptyIconCircle}>
+            <AppIcon name="calendar" size={28} color={Colors.primary} />
+          </View>
           <Text style={styles.emptyTitle}>
             {t('calendar.no_events_today', 'No events scheduled for this day')}
           </Text>
           <Text style={styles.emptySubtitle}>
-            {t('calendar.empty_hint', 'Court appearances, filing deadlines and diary notes will appear here.')}
+            {t(
+              'calendar.empty_hint',
+              'Court appearances, filing deadlines and diary notes will appear here.'
+            )}
           </Text>
         </View>
       ) : (
@@ -84,9 +84,12 @@ export const CalendarDayView: React.FC<CalendarDayViewProps> = ({
           {/* Hearings Section */}
           {hearings.length > 0 && (
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>
-                🏛️ {t('calendar.hearings', 'Hearings')} ({hearings.length})
-              </Text>
+              <View style={styles.sectionTitleRow}>
+                <AppIcon name="landmark" size={14} color={Colors.primary} />
+                <Text style={styles.sectionTitle}>
+                  {t('calendar.hearings', 'Hearings')} ({hearings.length})
+                </Text>
+              </View>
               {hearings.map((h: AgendaHearingItem) => (
                 <TouchableOpacity
                   key={`h-${h.id}`}
@@ -110,12 +113,18 @@ export const CalendarDayView: React.FC<CalendarDayViewProps> = ({
                     ) : null}
 
                     <View style={styles.cardFooter}>
-                      <Text style={styles.detailText}>
-                        📍 Hall {h.court_hall_number || '—'} • Item #{h.item_number || '—'}
-                      </Text>
-                      <Text style={styles.timeText}>
-                        🕒 {h.hearing_time || t('calendar.all_day', 'All Day')}
-                      </Text>
+                      <View style={styles.iconTextRow}>
+                        <AppIcon name="map-pin" size={12} color={Colors.text.muted} />
+                        <Text style={styles.detailText}>
+                          Hall {h.court_hall_number || '—'} • Item #{h.item_number || '—'}
+                        </Text>
+                      </View>
+                      <View style={styles.iconTextRow}>
+                        <AppIcon name="clock" size={12} color={Colors.primaryLight} />
+                        <Text style={styles.timeText}>
+                          {h.hearing_time || t('calendar.all_day', 'All Day')}
+                        </Text>
+                      </View>
                     </View>
                   </Card>
                 </TouchableOpacity>
@@ -126,9 +135,13 @@ export const CalendarDayView: React.FC<CalendarDayViewProps> = ({
           {/* Compliance Deadlines Section */}
           {compliance.length > 0 && (
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>
-                ⚠️ {t('calendar.compliance_deadlines', 'Compliance Deadlines')} ({compliance.length})
-              </Text>
+              <View style={styles.sectionTitleRow}>
+                <AppIcon name="alert-triangle" size={14} color={Colors.warning} />
+                <Text style={styles.sectionTitle}>
+                  {t('calendar.compliance_deadlines', 'Compliance Deadlines')} (
+                  {compliance.length})
+                </Text>
+              </View>
               {compliance.map((c: AgendaReminderItem) => (
                 <TouchableOpacity
                   key={`c-${c.id}`}
@@ -147,9 +160,10 @@ export const CalendarDayView: React.FC<CalendarDayViewProps> = ({
                     ) : null}
 
                     <View style={styles.cardFooter}>
-                      <Text style={styles.detailText}>
-                        ⏰ {c.time || c.date}
-                      </Text>
+                      <View style={styles.iconTextRow}>
+                        <AppIcon name="alarm-clock" size={12} color={Colors.text.muted} />
+                        <Text style={styles.detailText}>{c.time || c.date}</Text>
+                      </View>
                       {c.is_completed ? (
                         <Badge label="COMPLETED" variant="success" />
                       ) : (
@@ -165,9 +179,12 @@ export const CalendarDayView: React.FC<CalendarDayViewProps> = ({
           {/* General Reminders Section */}
           {reminders.length > 0 && (
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>
-                📝 {t('calendar.reminders', 'Personal Reminders')} ({reminders.length})
-              </Text>
+              <View style={styles.sectionTitleRow}>
+                <AppIcon name="file-text" size={14} color={Colors.text.secondary} />
+                <Text style={styles.sectionTitle}>
+                  {t('calendar.reminders', 'Personal Reminders')} ({reminders.length})
+                </Text>
+              </View>
               {reminders.map((r: AgendaReminderItem) => (
                 <TouchableOpacity
                   key={`r-${r.id}`}
@@ -178,20 +195,23 @@ export const CalendarDayView: React.FC<CalendarDayViewProps> = ({
                   <Card style={styles.eventCard}>
                     <View style={styles.cardHeader}>
                       <Text
-                        style={[
-                          styles.cardTitle,
-                          r.is_completed && styles.completedText,
-                        ]}
+                        style={[styles.cardTitle, r.is_completed && styles.completedText]}
                       >
                         {r.title}
                       </Text>
                       <TouchableOpacity
+                        testID={`reminder-toggle-${r.id}`}
                         onPress={() => onToggleCompleteReminder?.(r)}
                         style={styles.checkButton}
+                        accessibilityLabel={
+                          r.is_completed ? 'Mark incomplete' : 'Mark complete'
+                        }
                       >
-                        <Text style={styles.checkText}>
-                          {r.is_completed ? '✅' : '⚪'}
-                        </Text>
+                        <AppIcon
+                          name={r.is_completed ? 'check-circle' : 'circle'}
+                          size={18}
+                          color={r.is_completed ? Colors.success : Colors.text.muted}
+                        />
                       </TouchableOpacity>
                     </View>
 
@@ -202,9 +222,10 @@ export const CalendarDayView: React.FC<CalendarDayViewProps> = ({
                     ) : null}
 
                     <View style={styles.cardFooter}>
-                      <Text style={styles.detailText}>
-                        🕒 {r.time || r.date}
-                      </Text>
+                      <View style={styles.iconTextRow}>
+                        <AppIcon name="clock" size={12} color={Colors.text.muted} />
+                        <Text style={styles.detailText}>{r.time || r.date}</Text>
+                      </View>
                       <Badge label={r.reminder_type} variant="secondary" />
                     </View>
                   </Card>
@@ -216,9 +237,12 @@ export const CalendarDayView: React.FC<CalendarDayViewProps> = ({
           {/* Live Court Token Alerts */}
           {tokens.length > 0 && (
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>
-                🔔 {t('calendar.live_tokens', 'Court Token Alerts')} ({tokens.length})
-              </Text>
+              <View style={styles.sectionTitleRow}>
+                <AppIcon name="bell" size={14} color={Colors.gold} />
+                <Text style={styles.sectionTitle}>
+                  {t('calendar.live_tokens', 'Court Token Alerts')} ({tokens.length})
+                </Text>
+              </View>
               {tokens.map((tk: AgendaTokenItem) => (
                 <TouchableOpacity
                   key={`tk-${tk.id}`}
@@ -228,9 +252,7 @@ export const CalendarDayView: React.FC<CalendarDayViewProps> = ({
                 >
                   <Card style={[styles.eventCard, styles.tokenCardBorder]}>
                     <View style={styles.cardHeader}>
-                      <Text style={styles.cardTitle}>
-                        Token #{tk.token_number}
-                      </Text>
+                      <Text style={styles.cardTitle}>Token #{tk.token_number}</Text>
                       <Badge label={tk.status} variant="gold" />
                     </View>
 
@@ -282,7 +304,7 @@ const styles = StyleSheet.create({
     color: Colors.primaryLight,
   },
   statLabel: {
-    fontSize: 10,
+    fontSize: 12,
     color: Colors.text.secondary,
     marginTop: 2,
     textAlign: 'center',
@@ -290,13 +312,18 @@ const styles = StyleSheet.create({
   section: {
     marginBottom: 20,
   },
+  sectionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 8,
+  },
   sectionTitle: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
     color: Colors.text.secondary,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
-    marginBottom: 8,
   },
   eventCard: {
     marginBottom: 10,
@@ -335,6 +362,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  iconTextRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
   detailText: {
     fontSize: 12,
     color: Colors.text.muted,
@@ -345,7 +377,7 @@ const styles = StyleSheet.create({
     color: Colors.primaryLight,
   },
   pendingText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
     color: Colors.warning,
   },
@@ -355,9 +387,6 @@ const styles = StyleSheet.create({
   },
   checkButton: {
     padding: 4,
-  },
-  checkText: {
-    fontSize: 16,
   },
   tokenHighlight: {
     fontSize: 12,
@@ -369,8 +398,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  emptyIcon: {
-    fontSize: 48,
+  emptyIconCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: Colors.surfaceBlue,
+    alignItems: 'center',
+    justifyContent: 'center',
     marginBottom: 16,
   },
   emptyTitle: {
@@ -388,4 +422,3 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
 });
-

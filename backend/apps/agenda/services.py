@@ -152,9 +152,7 @@ class AgendaService:
                 events_by_date[d_str] = []
 
             case_ref = (
-                f"{r.case.case_type} {r.case.case_number}/{r.case.filing_year}"
-                if r.case
-                else None
+                f"{r.case.case_type} {r.case.case_number}/{r.case.filing_year}" if r.case else None
             )
 
             r_dict = {
@@ -200,10 +198,16 @@ class AgendaService:
                 "token_number": tr.token_number,
                 "item_number": getattr(tr, "listed_item_number", getattr(tr, "item_number", None)),
                 "court_hall_number": tr.court_hall.hall_number,
-                "court_name": getattr(tr, "court_name", getattr(tr.court_hall, "bench_name", f"Court Hall {tr.court_hall.hall_number}")),
+                "court_name": getattr(
+                    tr,
+                    "court_name",
+                    getattr(tr.court_hall, "bench_name", f"Court Hall {tr.court_hall.hall_number}"),
+                ),
                 "hearing_date": tr.hearing_date.isoformat(),
                 "status": tr.status,
-                "last_observed_token": getattr(tr, "current_called_token", getattr(tr, "last_observed_token", "")),
+                "last_observed_token": getattr(
+                    tr, "current_called_token", getattr(tr, "last_observed_token", "")
+                ),
                 "last_observed_at": (
                     tr.last_synced_at.astimezone(IST_TIMEZONE).isoformat()
                     if getattr(tr, "last_synced_at", None)
@@ -255,14 +259,10 @@ class AgendaService:
             1 for r in formatted_reminders if r["status"] in ("PENDING", "PROCESSING")
         )
         completed_events_count = sum(
-            1
-            for h in formatted_hearings
-            if h["status"] in ("COMPLETED", "ADJOURNED")
+            1 for h in formatted_hearings if h["status"] in ("COMPLETED", "ADJOURNED")
         ) + sum(1 for r in formatted_reminders if r["is_completed"])
 
-        total_events = (
-            len(formatted_hearings) + len(formatted_reminders) + len(formatted_tokens)
-        )
+        total_events = len(formatted_hearings) + len(formatted_reminders) + len(formatted_tokens)
 
         return {
             "view": view,
@@ -372,4 +372,3 @@ class AgendaService:
         """Delete an advocate reminder."""
         reminder = Reminder.objects.get(id=reminder_id, advocate=advocate)
         reminder.delete()
-

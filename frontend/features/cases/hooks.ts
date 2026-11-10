@@ -14,10 +14,131 @@ import {
   CaseNoteItem,
 } from '../../types';
 
+export const DEMO_DASHBOARD_DATA: DashboardData & {
+  isOfflineCached?: boolean;
+  cachedAt?: string;
+  isDemoData?: boolean;
+} = {
+  summary: {
+    total_cases: 12,
+    pending_cases: 7,
+    disposed_cases: 3,
+    adjourned_cases: 2,
+  },
+  today_hearings: [
+    {
+      id: 101,
+      case_id: 1,
+      case_number: 'WP 1234/2024',
+      petitioner: 'Srinivasa Rao',
+      respondent: 'State of AP',
+      court_hall: 4,
+      item_number: 12,
+      judge: "Court Hall 4 - Hon'ble Justice Reddy",
+      hearing_date: '2026-11-09',
+      hearing_time: '10:30:00',
+      status: 'SCHEDULED',
+    },
+  ],
+  upcoming_hearings: [
+    {
+      id: 102,
+      case_id: 2,
+      case_number: 'WA 5678/2024',
+      petitioner: 'Venkata Ramana',
+      respondent: 'AP Transco',
+      court_hall: 2,
+      item_number: 5,
+      judge: 'Court Hall 2 - Division Bench',
+      hearing_date: '2026-11-12',
+      hearing_time: '11:00:00',
+      status: 'SCHEDULED',
+    },
+  ],
+  upcoming_reminders: [
+    {
+      id: 201,
+      case_id: 1,
+      case_number: 'WP 1234/2024',
+      title: 'Submit Counter Affidavit',
+      reminder_type: 'FILING',
+      due_date: '2026-11-14T10:00:00Z',
+      status: 'PENDING',
+    },
+  ],
+  recent_notifications: [
+    {
+      id: 301,
+      title: 'Item 12 Called',
+      body: 'Item 12 is now called in Court Hall 4',
+      category: 'TOKEN_ALERT',
+      is_read: false,
+      sent_at: '2026-11-09T10:15:00Z',
+      case_id: 1,
+    },
+  ],
+  recent_activity: [
+    {
+      id: 401,
+      case_id: 1,
+      case_number: 'WP 1234/2024',
+      event_type: 'HEARING_SCHEDULED',
+      description: 'Hearing appearance listed in Court Hall 4 (Item #12).',
+      source: 'SYNC',
+      created_at: '2026-11-09T09:15:00Z',
+    },
+  ],
+  sync_status: {
+    last_synced_at: null,
+    is_fresh: false,
+    status: 'DEMO',
+  },
+  isOfflineCached: false,
+  isDemoData: true,
+};
+
+export const DEMO_CASES_DATA: CaseItem[] = [
+  {
+    id: 1,
+    case_number: 'WP 1234/2024',
+    case_type: 'WP',
+    filing_year: 2024,
+    petitioner: 'Srinivasa Rao',
+    respondent: 'State of Andhra Pradesh',
+    court_hall_number: 4,
+    current_stage: 'Hearing',
+    status: 'PENDING',
+    next_hearing_date: '2026-11-09',
+    petitioner_advocate: 'P. Venkat Advocate',
+    created_at: '2024-01-15T00:00:00Z',
+    updated_at: '2024-01-15T00:00:00Z',
+  },
+  {
+    id: 2,
+    case_number: 'WA 5678/2024',
+    case_type: 'WA',
+    filing_year: 2024,
+    petitioner: 'Venkata Ramana',
+    respondent: 'AP Transco',
+    court_hall_number: 2,
+    current_stage: 'Admission',
+    status: 'PENDING',
+    next_hearing_date: '2026-11-12',
+    petitioner_advocate: 'P. Venkat Advocate',
+    created_at: '2024-02-20T00:00:00Z',
+    updated_at: '2024-02-20T00:00:00Z',
+  },
+];
+
 export const useCases = () => {
   return useQuery({
     queryKey: ['cases'],
     queryFn: async (): Promise<CaseItem[]> => {
+      const isDemo = await tokenStorage.isDemoMode();
+      if (isDemo) {
+        return DEMO_CASES_DATA;
+      }
+
       const enrollment = await tokenStorage.getUserEnrollment();
       try {
         const response = await apiClient.get<CaseItem[] | { results: CaseItem[] }>(
@@ -50,8 +171,17 @@ export const useDashboard = () => {
   return useQuery({
     queryKey: ['dashboard'],
     queryFn: async (): Promise<
-      DashboardData & { isOfflineCached?: boolean; cachedAt?: string }
+      DashboardData & {
+        isOfflineCached?: boolean;
+        cachedAt?: string;
+        isDemoData?: boolean;
+      }
     > => {
+      const isDemo = await tokenStorage.isDemoMode();
+      if (isDemo) {
+        return DEMO_DASHBOARD_DATA;
+      }
+
       const enrollment = await tokenStorage.getUserEnrollment();
       try {
         const response = await apiClient.get<DashboardData>(ENDPOINTS.CASES.DASHBOARD);
@@ -64,6 +194,7 @@ export const useDashboard = () => {
         return {
           ...data,
           isOfflineCached: false,
+          isDemoData: false,
         };
       } catch (err) {
         const cached = await offlineStorage.getCachedDashboard(enrollment);
@@ -72,6 +203,7 @@ export const useDashboard = () => {
             ...cached.data,
             isOfflineCached: true,
             cachedAt: cached.lastSyncedAt,
+            isDemoData: false,
           };
         }
         throw err;
@@ -239,10 +371,7 @@ export const useRescheduleHearing = () => {
   });
 };
 
-export const useCaseDocuments = (
-  caseId: number | string,
-  category?: string
-) => {
+export const useCaseDocuments = (caseId: number | string, category?: string) => {
   return useQuery({
     queryKey: ['case-documents', String(caseId), category || 'all'],
     queryFn: async (): Promise<CaseDocumentItem[]> => {
@@ -315,10 +444,7 @@ export const useDeleteCaseDocument = () => {
   });
 };
 
-export const useCaseNotes = (
-  caseId: number | string,
-  search?: string
-) => {
+export const useCaseNotes = (caseId: number | string, search?: string) => {
   return useQuery({
     queryKey: ['case-notes', String(caseId), search || ''],
     queryFn: async (): Promise<CaseNoteItem[]> => {

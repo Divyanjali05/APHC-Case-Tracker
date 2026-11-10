@@ -165,3 +165,128 @@ class OTPVerification(models.Model):
         if timezone.now() >= self.expires_at:
             return False, "This OTP has expired. Please request a new OTP."
         return True, "Valid"
+
+
+_SENSITIVE_AUDIT_KEYS = {
+    "password",
+    "confirm_password",
+    "new_password",
+    "old_password",
+    "token",
+    "access",
+    "refresh",
+    "secret",
+    "otp",
+    "api_key",
+    "authorization",
+}
+
+
+def sanitize_audit_metadata(data: dict | None) -> dict:
+    """Recursively strip any credential or token keys from admin audit payloads."""
+    if not isinstance(data, dict):
+        return {}
+    cleaned = {}
+    for key, val in data.items():
+        key_lower = str(key).lower()
+        if any(sensitive in key_lower for sensitive in _SENSITIVE_AUDIT_KEYS):
+            continue
+        if isinstance(val, dict):
+            cleaned[str(key)] = sanitize_audit_metadata(val)
+        elif isinstance(val, str | int | float | bool) or val is None:
+            cleaned[str(key)] = val
+        elif isinstance(val, list | tuple):
+            cleaned[str(key)] = [
+                sanitize_audit_metadata(v) if isinstance(v, dict) else str(v) for v in val
+            ]
+        else:
+            cleaned[str(key)] = str(val)
+    return cleaned
+
+
+class AdminAuditLog(models.Model):
+    """Audit trail of administrative actions without storing credentials or secrets."""
+
+    ACTION_USER_CREATED = "USER_CREATED"
+    ACTION_USER_UPDATED = "USER_UPDATED"
+    ACTION_USER_ACTIVATED = "USER_ACTIVATED"
+    ACTION_USER_DEACTIVATED = "USER_DEACTIVATED"
+    ACTION_ROLE_CHANGED = "ROLE_CHANGED"
+    ACTION_ADMIN_CREATED = "ADMIN_CREATED"
+    ACTION_ADMIN_PROMOTED = "ADMIN_PROMOTED"
+    ACTION_CASE_ASSIGNED = "CASE_ASSIGNED"
+    ACTION_CASE_UNASSIGNED = "CASE_UNASSIGNED"
+
+    ACTION_CHOICES = (
+        (ACTION_USER_CREATED, "Advocate Account Created"),
+        (ACTION_USER_UPDATED, "User Profile Updated"),
+        (ACTION_USER_ACTIVATED, "User Account Activated"),
+        (ACTION_USER_DEACTIVATED, "User Account Deactivated"),
+        (ACTION_ROLE_CHANGED, "Account Role Changed"),
+        (ACTION_ADMIN_CREATED, "Admin Account Created"),
+        (ACTION_ADMIN_PROMOTED, "Admin Privileges Granted"),
+        (ACTION_CASE_ASSIGNED, "Case Assigned to Advocate"),
+        (ACTION_CASE_UNASSIGNED, "Case Unassigned from Advocate"),
+    )
+
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="admin_audit_actions",
+    )
+    action = models.CharField(max_length=50, choices=ACTION_CHOICES, db_index=True)
+    target_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="admin_audit_targets",
+    )
+    target_case = models.ForeignKey(
+        "cases.Case",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="admin_audit_logs",
+    )
+    summary = models.CharField(max_length=500)
+    metadata = models.JSONField(default=dict, blank=True)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Admin Audit Log"
+        verbose_name_plural = "Admin Audit Logs"
+        indexes = [
+            models.Index(fields=["action", "-created_at"]),
+            models.Index(fields=["target_user", "-created_at"]),
+        ]
+
+    def __str__(self):
+        actor_name = self.actor.username if self.actor else "System"
+        return f"[{self.action}] by {actor_name}: {self.summary}"
+
+    @classmethod
+    def log_action(
+        cls,
+        *,
+        actor,
+        action: str,
+        summary: str,
+        target_user=None,
+        target_case=None,
+        metadata: dict | None = None,
+        ip_address: str | None = None,
+    ) -> "AdminAuditLog":
+        return cls.objects.create(
+            actor=actor if getattr(actor, "is_authenticated", False) else None,
+            action=action,
+            target_user=target_user,
+            target_case=target_case,
+            summary=summary[:500],
+            metadata=sanitize_audit_metadata(metadata),
+            ip_address=ip_address,
+        )

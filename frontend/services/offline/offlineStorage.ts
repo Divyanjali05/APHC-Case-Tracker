@@ -1,5 +1,11 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { CaseItem, HearingItem, ReminderItem, DashboardData, NotificationItem } from '../../types';
+import {
+  CaseItem,
+  HearingItem,
+  ReminderItem,
+  DashboardData,
+  NotificationItem,
+} from '../../types';
 import { secureEncryption } from './secureEncryption';
 
 export interface CachedEnvelope<T> {
@@ -234,7 +240,10 @@ export const offlineStorage = {
   /**
    * Save cached notifications list for the advocate using Authenticated AES-256 encryption.
    */
-  async saveCachedNotifications(userKey: string, notifications: NotificationItem[]): Promise<void> {
+  async saveCachedNotifications(
+    userKey: string,
+    notifications: NotificationItem[]
+  ): Promise<void> {
     const key = buildKey(userKey, 'notifications');
     const envelope: CachedEnvelope<NotificationItem[]> = {
       data: notifications,
@@ -248,7 +257,9 @@ export const offlineStorage = {
   /**
    * Retrieve cached notifications list for the advocate, decrypting and verifying authenticity.
    */
-  async getCachedNotifications(userKey: string): Promise<CachedEnvelope<NotificationItem[]> | null> {
+  async getCachedNotifications(
+    userKey: string
+  ): Promise<CachedEnvelope<NotificationItem[]> | null> {
     const key = buildKey(userKey, 'notifications');
     const raw = await AsyncStorage.getItem(key);
     if (!raw) return null;

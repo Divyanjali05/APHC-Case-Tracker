@@ -8,6 +8,7 @@ import {
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { Badge } from '../common/Badge';
+import { AppIcon } from '../common/AppIcon';
 import { Colors } from '../../constants/colors';
 import { CourtStatusObservationItem } from '../../types';
 import { formatDate, formatTime } from '../../utils/formatters';
@@ -142,7 +143,13 @@ export const CourtStatusTimeline: React.FC<CourtStatusTimelineProps> = ({
                       {prevStatus && prevStatus !== item.normalized_status && (
                         <>
                           <Badge label={prevStatus} variant="secondary" />
-                          <Text style={styles.arrowIcon}>→</Text>
+                          <View style={styles.arrowIconWrap}>
+                            <AppIcon
+                              name="arrow-right"
+                              size={13}
+                              color={Colors.text.muted}
+                            />
+                          </View>
                         </>
                       )}
                       <Badge
@@ -153,7 +160,8 @@ export const CourtStatusTimeline: React.FC<CourtStatusTimelineProps> = ({
 
                     {item.is_alert_dispatched && (
                       <View style={styles.alertPill} testID="alert-dispatched-pill">
-                        <Text style={styles.alertPillText}>🔔 Alert Sent</Text>
+                        <AppIcon name="bell" size={11} color={Colors.gold} />
+                        <Text style={styles.alertPillText}>Alert Sent</Text>
                       </View>
                     )}
                   </View>
@@ -217,29 +225,29 @@ const styles = StyleSheet.create({
     color: Colors.text.primary,
   },
   subtitle: {
-    fontSize: 11,
+    fontSize: 12,
     color: Colors.text.muted,
-    marginTop: 1,
+    marginTop: 2,
   },
   filterPill: {
-    paddingVertical: 4,
-    paddingHorizontal: 10,
-    borderRadius: 12,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 14,
     backgroundColor: Colors.surfaceSubtle,
     borderWidth: 1,
     borderColor: Colors.border,
   },
   filterPillActive: {
-    backgroundColor: 'rgba(37, 99, 235, 0.2)',
-    borderColor: Colors.primaryLight,
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
   },
   filterPillText: {
-    fontSize: 11,
+    fontSize: 12,
     color: Colors.text.secondary,
     fontWeight: '600',
   },
   filterPillTextActive: {
-    color: '#93C5FD',
+    color: Colors.text.white,
   },
   loadingContainer: {
     paddingVertical: 16,
@@ -304,17 +312,17 @@ const styles = StyleSheet.create({
   spineLine: {
     flex: 1,
     width: 2,
-    backgroundColor: Colors.surfaceSubtle,
+    backgroundColor: Colors.border,
     marginTop: 2,
   },
   contentCard: {
     flex: 1,
-    backgroundColor: Colors.surfaceSubtle,
-    borderRadius: 6,
+    backgroundColor: Colors.surface,
+    borderRadius: 8,
     padding: 10,
     marginLeft: 8,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.05)',
+    borderColor: Colors.border,
   },
   statusRow: {
     flexDirection: 'row',
@@ -327,21 +335,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexWrap: 'wrap',
   },
-  arrowIcon: {
-    color: Colors.text.muted,
-    marginHorizontal: 6,
-    fontSize: 12,
+  arrowIconWrap: {
+    marginHorizontal: 5,
   },
   alertPill: {
-    backgroundColor: 'rgba(245, 158, 11, 0.15)',
-    borderColor: 'rgba(245, 158, 11, 0.3)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: Colors.goldSurface,
+    borderColor: Colors.goldBorder,
     borderWidth: 1,
     borderRadius: 4,
     paddingVertical: 2,
     paddingHorizontal: 6,
   },
   alertPillText: {
-    fontSize: 10,
+    fontSize: 12,
     color: Colors.gold,
     fontWeight: '700',
   },
@@ -352,16 +361,19 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   infoBadge: {
-    fontSize: 11,
+    fontSize: 12,
     color: Colors.text.secondary,
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
+    backgroundColor: Colors.surfaceSubtle,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
   },
   tokenBadge: {
-    color: '#93C5FD',
-    backgroundColor: 'rgba(37, 99, 235, 0.15)',
+    color: Colors.primary,
+    backgroundColor: Colors.surfaceBlue,
+    borderColor: Colors.infoBorder,
     fontWeight: '700',
   },
   metaRow: {
@@ -371,11 +383,11 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   sourceText: {
-    fontSize: 10,
+    fontSize: 12,
     color: Colors.text.muted,
   },
   timestampText: {
-    fontSize: 10,
+    fontSize: 12,
     color: Colors.text.muted,
   },
 });

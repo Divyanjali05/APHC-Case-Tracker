@@ -15,6 +15,7 @@ import { Colors } from '../../constants/colors';
 import { AudioRecordResult, audioService } from '../../services/voice/audioService';
 import { CreateVoiceNotePayload, VoiceTranscriptionLanguage } from '../../types';
 import { Button } from '../common/Button';
+import { AppIcon } from '../common/AppIcon';
 
 export interface VoiceRecorderModalProps {
   visible: boolean;
@@ -61,7 +62,7 @@ export const VoiceRecorderModal: React.FC<VoiceRecorderModalProps> = ({
     let interval: ReturnType<typeof setInterval> | null = null;
     if (recordingState === 'RECORDING') {
       interval = setInterval(() => {
-        setDurationSeconds((prev) => prev + 1);
+        setDurationSeconds(prev => prev + 1);
       }, 1000);
     }
     return () => {
@@ -117,7 +118,12 @@ export const VoiceRecorderModal: React.FC<VoiceRecorderModalProps> = ({
       setRecordResult(result);
       setRecordingState('STOPPED');
       if (!title.trim()) {
-        setTitle(`Note ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`);
+        setTitle(
+          `Note ${new Date().toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit',
+          })}`
+        );
       }
     } catch (err: unknown) {
       setErrorMessage(err instanceof Error ? err.message : 'Failed to stop recording');
@@ -173,35 +179,55 @@ export const VoiceRecorderModal: React.FC<VoiceRecorderModalProps> = ({
   if (!visible) return null;
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={handleCancel}>
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      onRequestClose={handleCancel}
+    >
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.modalBackdrop}
       >
         <View style={styles.modalContainer} testID="voice-recorder-modal">
           <View style={styles.header}>
-            <Text style={styles.title}>{t('voiceNotes.recordingModalTitle', 'Voice Dictation')}</Text>
-            <TouchableOpacity onPress={handleCancel} testID="close-modal-button" hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-              <Text style={styles.closeText}>✕</Text>
+            <Text style={styles.title}>
+              {t('voiceNotes.recordingModalTitle', 'Voice Dictation')}
+            </Text>
+            <TouchableOpacity
+              onPress={handleCancel}
+              testID="close-modal-button"
+              style={styles.closeIconBtn}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              accessibilityLabel={t('common.close', 'Close')}
+            >
+              <AppIcon name="x" size={18} color={Colors.text.secondary} />
             </TouchableOpacity>
           </View>
 
           <ScrollView style={styles.body} keyboardShouldPersistTaps="handled">
             {/* Title Input */}
-            <Text style={styles.inputLabel}>{t('voiceNotes.titlePlaceholder', 'Voice Note Title')}</Text>
+            <Text style={styles.inputLabel}>
+              {t('voiceNotes.titlePlaceholder', 'Voice Note Title')}
+            </Text>
             <TextInput
               style={styles.textInput}
               value={title}
               onChangeText={setTitle}
-              placeholder={t('voiceNotes.titlePlaceholder', 'e.g. Interim Stay Arguments')}
+              placeholder={t(
+                'voiceNotes.titlePlaceholder',
+                'e.g. Interim Stay Arguments'
+              )}
               placeholderTextColor={Colors.text.muted}
               testID="voice-note-title-input"
             />
 
             {/* Language Selector */}
-            <Text style={styles.inputLabel}>{t('voiceNotes.language', 'Dictation Language')}</Text>
+            <Text style={styles.inputLabel}>
+              {t('voiceNotes.language', 'Dictation Language')}
+            </Text>
             <View style={styles.langRow}>
-              {(['en', 'te', 'hi'] as VoiceTranscriptionLanguage[]).map((lang) => {
+              {(['en', 'te', 'hi'] as VoiceTranscriptionLanguage[]).map(lang => {
                 const isSelected = language === lang;
                 const labels: Record<VoiceTranscriptionLanguage, string> = {
                   en: 'English',
@@ -215,7 +241,9 @@ export const VoiceRecorderModal: React.FC<VoiceRecorderModalProps> = ({
                     onPress={() => setLanguage(lang)}
                     testID={`lang-${lang}-button`}
                   >
-                    <Text style={[styles.langText, isSelected && styles.langTextSelected]}>
+                    <Text
+                      style={[styles.langText, isSelected && styles.langTextSelected]}
+                    >
                       {labels[lang]}
                     </Text>
                   </TouchableOpacity>
@@ -238,10 +266,14 @@ export const VoiceRecorderModal: React.FC<VoiceRecorderModalProps> = ({
                   : formatTime(durationSeconds)}
               </Text>
               <Text style={styles.stateSubtitle}>
-                {recordingState === 'RECORDING' && t('voiceNotes.recording', 'Recording in progress...')}
-                {recordingState === 'PAUSED' && t('voiceNotes.paused', 'Recording paused')}
-                {recordingState === 'STOPPED' && t('voiceNotes.previewTitle', 'Playback Preview')}
-                {recordingState === 'IDLE' && t('voiceNotes.idlePrompt', 'Ready to record')}
+                {recordingState === 'RECORDING' &&
+                  t('voiceNotes.recording', 'Recording in progress...')}
+                {recordingState === 'PAUSED' &&
+                  t('voiceNotes.paused', 'Recording paused')}
+                {recordingState === 'STOPPED' &&
+                  t('voiceNotes.previewTitle', 'Playback Preview')}
+                {recordingState === 'IDLE' &&
+                  t('voiceNotes.idlePrompt', 'Ready to record')}
               </Text>
             </View>
 
@@ -303,9 +335,16 @@ export const VoiceRecorderModal: React.FC<VoiceRecorderModalProps> = ({
                     onPress={handleTogglePreview}
                     testID="preview-play-button"
                   >
-                    <Text style={styles.previewBtnText}>
-                      {isPreviewPlaying ? '⏸ Stop Preview' : '▶ Play Preview'}
-                    </Text>
+                    <View style={styles.inlineBtn}>
+                      <AppIcon
+                        name={isPreviewPlaying ? 'pause' : 'play'}
+                        size={15}
+                        color={Colors.primary}
+                      />
+                      <Text style={styles.previewBtnText}>
+                        {isPreviewPlaying ? 'Stop Preview' : 'Play Preview'}
+                      </Text>
+                    </View>
                   </TouchableOpacity>
 
                   {/* Re-record button */}
@@ -314,7 +353,14 @@ export const VoiceRecorderModal: React.FC<VoiceRecorderModalProps> = ({
                     onPress={handleStartRecord}
                     testID="rerecord-button"
                   >
-                    <Text style={styles.rerecordText}>🔄 Record Again</Text>
+                    <View style={styles.inlineBtn}>
+                      <AppIcon
+                        name="rotate-ccw"
+                        size={14}
+                        color={Colors.text.secondary}
+                      />
+                      <Text style={styles.rerecordText}>Record Again</Text>
+                    </View>
                   </TouchableOpacity>
                 </View>
               )}
@@ -322,7 +368,9 @@ export const VoiceRecorderModal: React.FC<VoiceRecorderModalProps> = ({
 
             {errorMessage && (
               <View style={styles.errorBox}>
-                <Text style={styles.errorText} testID="voice-recorder-error">{errorMessage}</Text>
+                <Text style={styles.errorText} testID="voice-recorder-error">
+                  {errorMessage}
+                </Text>
               </View>
             )}
           </ScrollView>
@@ -359,7 +407,7 @@ export const VoiceRecorderModal: React.FC<VoiceRecorderModalProps> = ({
 const styles = StyleSheet.create({
   modalBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: Colors.overlay,
     justifyContent: 'flex-end',
   },
   modalContainer: {
@@ -382,9 +430,13 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: Colors.text.primary,
   },
-  closeText: {
-    fontSize: 20,
-    color: Colors.text.muted,
+  closeIconBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: Colors.surfaceSubtle,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   body: {
     padding: 18,
@@ -423,7 +475,7 @@ const styles = StyleSheet.create({
   },
   langChipSelected: {
     borderColor: Colors.primary,
-    backgroundColor: Colors.primary + '15',
+    backgroundColor: Colors.surfaceBlue,
   },
   langText: {
     fontSize: 12,
@@ -483,8 +535,14 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 10,
   },
+  inlineBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
   previewBtn: {
-    backgroundColor: Colors.primary + '20',
+    backgroundColor: Colors.surfaceBlue,
     borderWidth: 1,
     borderColor: Colors.primary,
     paddingVertical: 12,
@@ -505,16 +563,16 @@ const styles = StyleSheet.create({
     color: Colors.text.secondary,
   },
   errorBox: {
-    backgroundColor: '#fef2f2',
+    backgroundColor: Colors.dangerSurface,
     borderWidth: 1,
-    borderColor: '#fca5a5',
+    borderColor: Colors.dangerBorder,
     padding: 10,
     borderRadius: 8,
     marginTop: 10,
   },
   errorText: {
     fontSize: 13,
-    color: '#b91c1c',
+    color: Colors.danger,
   },
   footer: {
     flexDirection: 'row',

@@ -35,6 +35,37 @@ class ReminderSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
 
+    def validate(self, attrs):
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        instance = getattr(self, "instance", None)
+
+        case = attrs["case"] if "case" in attrs else (instance.case if instance else None)
+        hearing = (
+            attrs["hearing"] if "hearing" in attrs else (instance.hearing if instance else None)
+        )
+
+        if user and getattr(user, "is_authenticated", False):
+            if case and not case.tracked_by.filter(pk=user.pk).exists():
+                raise serializers.ValidationError(
+                    {"case": "You can only attach reminders to cases you are tracking."}
+                )
+            if hearing and not hearing.case.tracked_by.filter(pk=user.pk).exists():
+                raise serializers.ValidationError(
+                    {
+                        "hearing": (
+                            "You can only attach reminders to hearings for cases you are tracking."
+                        )
+                    }
+                )
+
+        if case and hearing and hearing.case_id != case.id:
+            raise serializers.ValidationError(
+                {"hearing": "Selected hearing does not belong to the specified case."}
+            )
+
+        return attrs
+
     def get_case_details(self, obj) -> dict | None:
         if not obj.case:
             return None

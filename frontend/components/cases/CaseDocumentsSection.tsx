@@ -53,7 +53,11 @@ export const CaseDocumentsSection: React.FC<CaseDocumentsSectionProps> = ({ case
   const [uploadDescription, setUploadDescription] = useState('');
   const [selectedFileName, setSelectedFileName] = useState('petition_docket.pdf');
 
-  const { data: documents = [], isLoading, refetch } = useCaseDocuments(caseId, selectedCategory);
+  const {
+    data: documents = [],
+    isLoading,
+    refetch,
+  } = useCaseDocuments(caseId, selectedCategory);
   const { mutate: uploadDoc, isPending: isUploading } = useUploadCaseDocument();
   const { mutate: deleteDoc, isPending: isDeleting } = useDeleteCaseDocument();
 
@@ -65,10 +69,16 @@ export const CaseDocumentsSection: React.FC<CaseDocumentsSectionProps> = ({ case
       if (canOpen) {
         await Linking.openURL(url);
       } else {
-        Alert.alert(t('export.exportSuccess', 'Document Available'), `${doc.title} (${doc.original_filename})`);
+        Alert.alert(
+          t('export.exportSuccess', 'Document Available'),
+          `${doc.title} (${doc.original_filename})`
+        );
       }
     } catch {
-      Alert.alert(t('common.error', 'Error'), t('judgment.docOpenError', 'Unable to open document.'));
+      Alert.alert(
+        t('common.error', 'Error'),
+        t('judgment.docOpenError', 'Unable to open document.')
+      );
     }
   };
 
@@ -111,9 +121,12 @@ export const CaseDocumentsSection: React.FC<CaseDocumentsSectionProps> = ({ case
     formData.append('description', uploadDescription.trim());
 
     // Minimal valid PDF binary data with %PDF- header for safe upload
-    const mockPdfBlob = new Blob(['%PDF-1.4\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\n%%EOF'], {
-      type: 'application/pdf',
-    });
+    const mockPdfBlob = new Blob(
+      ['%PDF-1.4\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\n%%EOF'],
+      {
+        type: 'application/pdf',
+      }
+    );
     formData.append('file', mockPdfBlob as unknown as Blob, selectedFileName);
 
     uploadDoc(
@@ -126,7 +139,10 @@ export const CaseDocumentsSection: React.FC<CaseDocumentsSectionProps> = ({ case
           refetch();
         },
         onError: () => {
-          Alert.alert(t('common.error', 'Error'), 'Failed to upload document. Please check file format.');
+          Alert.alert(
+            t('common.error', 'Error'),
+            'Failed to upload document. Please check file format.'
+          );
         },
       }
     );
@@ -142,7 +158,9 @@ export const CaseDocumentsSection: React.FC<CaseDocumentsSectionProps> = ({ case
     <Card style={styles.container} testID="case-documents-section">
       <View style={styles.headerRow}>
         <View>
-          <Text style={styles.sectionTitle}>{t('documents.title', 'Case Documents')}</Text>
+          <Text style={styles.sectionTitle}>
+            {t('documents.title', 'Case Documents')}
+          </Text>
           <Text style={styles.sectionSubtitle}>
             {t('documents.subtitle', 'Secure, encrypted court docket repository')}
           </Text>
@@ -171,7 +189,9 @@ export const CaseDocumentsSection: React.FC<CaseDocumentsSectionProps> = ({ case
               onPress={() => setSelectedCategory(cat.key)}
               testID={`doc-filter-${cat.key || 'ALL'}`}
             >
-              <Text style={[styles.filterChipText, isSelected && styles.filterChipTextActive]}>
+              <Text
+                style={[styles.filterChipText, isSelected && styles.filterChipTextActive]}
+              >
                 {t(cat.labelKey, cat.key || 'All')}
               </Text>
             </TouchableOpacity>
@@ -195,7 +215,10 @@ export const CaseDocumentsSection: React.FC<CaseDocumentsSectionProps> = ({ case
                 <Text style={styles.docTitle} numberOfLines={1}>
                   {doc.title}
                 </Text>
-                <Badge label={doc.document_type_display || doc.document_type} variant="secondary" />
+                <Badge
+                  label={doc.document_type_display || doc.document_type}
+                  variant="secondary"
+                />
               </View>
 
               {doc.description ? (
@@ -237,20 +260,33 @@ export const CaseDocumentsSection: React.FC<CaseDocumentsSectionProps> = ({ case
       <Modal visible={isUploadModalVisible} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>{t('documents.uploadTitle', 'Upload Case Document')}</Text>
+            <Text style={styles.modalTitle}>
+              {t('documents.uploadTitle', 'Upload Case Document')}
+            </Text>
 
-            <Text style={styles.inputLabel}>{t('documents.docTitle', 'Document Title')}</Text>
+            <Text style={styles.inputLabel}>
+              {t('documents.docTitle', 'Document Title')}
+            </Text>
             <TextInput
               style={styles.input}
               value={uploadTitle}
               onChangeText={setUploadTitle}
-              placeholder={t('documents.docTitlePlaceholder', 'e.g. Writ Petition Affidavit')}
+              placeholder={t(
+                'documents.docTitlePlaceholder',
+                'e.g. Writ Petition Affidavit'
+              )}
               placeholderTextColor={Colors.text.muted}
               testID="upload-doc-title-input"
             />
 
-            <Text style={styles.inputLabel}>{t('documents.docCategory', 'Document Category')}</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.catPickerScroll}>
+            <Text style={styles.inputLabel}>
+              {t('documents.docCategory', 'Document Category')}
+            </Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.catPickerScroll}
+            >
               {(
                 [
                   'PETITION',
@@ -268,19 +304,29 @@ export const CaseDocumentsSection: React.FC<CaseDocumentsSectionProps> = ({ case
                   style={[styles.catChip, uploadCategory === cat && styles.catChipActive]}
                   onPress={() => setUploadCategory(cat)}
                 >
-                  <Text style={[styles.catChipText, uploadCategory === cat && styles.catChipTextActive]}>
+                  <Text
+                    style={[
+                      styles.catChipText,
+                      uploadCategory === cat && styles.catChipTextActive,
+                    ]}
+                  >
                     {cat.replace('_', ' ')}
                   </Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>
 
-            <Text style={styles.inputLabel}>{t('documents.docDescription', 'Description')}</Text>
+            <Text style={styles.inputLabel}>
+              {t('documents.docDescription', 'Description')}
+            </Text>
             <TextInput
               style={[styles.input, styles.textArea]}
               value={uploadDescription}
               onChangeText={setUploadDescription}
-              placeholder={t('documents.docDescriptionPlaceholder', 'Brief details about this document')}
+              placeholder={t(
+                'documents.docDescriptionPlaceholder',
+                'Brief details about this document'
+              )}
               placeholderTextColor={Colors.text.muted}
               multiline
               numberOfLines={3}
@@ -312,7 +358,11 @@ export const CaseDocumentsSection: React.FC<CaseDocumentsSectionProps> = ({ case
                 style={styles.modalBtn}
               />
               <Button
-                title={isUploading ? t('documents.uploading', 'Uploading...') : t('documents.uploadButton', 'Upload')}
+                title={
+                  isUploading
+                    ? t('documents.uploading', 'Uploading...')
+                    : t('documents.uploadButton', 'Upload')
+                }
                 variant="primary"
                 onPress={handleSimulatedFileUpload}
                 style={styles.modalBtn}
@@ -345,7 +395,7 @@ const styles = StyleSheet.create({
     color: Colors.text.primary,
   },
   sectionSubtitle: {
-    fontSize: 11,
+    fontSize: 12,
     color: Colors.text.secondary,
     marginTop: 2,
   },
@@ -426,7 +476,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   docMeta: {
-    fontSize: 11,
+    fontSize: 12,
     color: Colors.text.muted,
   },
   actionsRow: {
@@ -440,7 +490,7 @@ const styles = StyleSheet.create({
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: Colors.overlay,
     justifyContent: 'center',
     padding: 16,
   },
@@ -499,7 +549,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.primary,
   },
   catChipText: {
-    fontSize: 11,
+    fontSize: 12,
     color: Colors.text.secondary,
   },
   catChipTextActive: {

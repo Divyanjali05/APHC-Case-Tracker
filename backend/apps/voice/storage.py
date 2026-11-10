@@ -123,4 +123,3 @@ def validate_audio_file(uploaded_file: Any) -> None:
             raise ValidationError(
                 f"File content does not match genuine {ext.upper()} audio signature."
             )
-

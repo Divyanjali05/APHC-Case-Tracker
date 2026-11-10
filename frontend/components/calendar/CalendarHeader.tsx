@@ -3,6 +3,7 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { Colors } from '../../constants/colors';
 import { CalendarViewType } from '../../types';
+import { AppIcon } from '../common/AppIcon';
 
 export interface CalendarHeaderProps {
   currentView: CalendarViewType;
@@ -47,7 +48,7 @@ export const CalendarHeader: React.FC<CalendarHeaderProps> = ({
       {/* Top Bar: View Tabs and Actions */}
       <View style={styles.topRow}>
         <View style={styles.segmentedControl}>
-          {(['day', 'week', 'month'] as CalendarViewType[]).map((view) => (
+          {(['day', 'week', 'month'] as CalendarViewType[]).map(view => (
             <TouchableOpacity
               key={view}
               testID={`view-tab-${view}`}
@@ -76,7 +77,7 @@ export const CalendarHeader: React.FC<CalendarHeaderProps> = ({
             onPress={onOpenSync}
             accessibilityLabel={t('calendar.sync', 'Sync')}
           >
-            <Text style={styles.actionIcon}>🔄</Text>
+            <AppIcon name="refresh" size={16} color={Colors.primary} />
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -85,7 +86,10 @@ export const CalendarHeader: React.FC<CalendarHeaderProps> = ({
             onPress={onOpenAddReminder}
             accessibilityLabel={t('calendar.add_reminder', '+ Reminder')}
           >
-            <Text style={styles.addButtonText}>+ {t('calendar.reminder_short', 'Reminder')}</Text>
+            <AppIcon name="plus" size={14} color={Colors.text.white} />
+            <Text style={styles.addButtonText}>
+              {t('calendar.reminder_short', 'Reminder')}
+            </Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -96,8 +100,9 @@ export const CalendarHeader: React.FC<CalendarHeaderProps> = ({
           testID="nav-prev-btn"
           style={styles.navArrow}
           onPress={onPrev}
+          accessibilityLabel={t('common.previous', 'Previous')}
         >
-          <Text style={styles.navArrowText}>◀</Text>
+          <AppIcon name="chevron-left" size={18} color={Colors.text.primary} />
         </TouchableOpacity>
 
         <View style={styles.dateLabelContainer}>
@@ -116,8 +121,9 @@ export const CalendarHeader: React.FC<CalendarHeaderProps> = ({
           testID="nav-next-btn"
           style={styles.navArrow}
           onPress={onNext}
+          accessibilityLabel={t('common.next', 'Next')}
         >
-          <Text style={styles.navArrowText}>▶</Text>
+          <AppIcon name="chevron-right" size={18} color={Colors.text.primary} />
         </TouchableOpacity>
       </View>
     </View>
@@ -145,8 +151,11 @@ const styles = StyleSheet.create({
     padding: 3,
   },
   segmentButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    minHeight: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
     borderRadius: 6,
   },
   segmentButtonActive: {
@@ -166,19 +175,25 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   iconButton: {
-    padding: 8,
+    minWidth: 40,
+    minHeight: 40,
+    padding: 9,
     borderRadius: 8,
     backgroundColor: Colors.surfaceSubtle,
+    borderWidth: 1,
+    borderColor: Colors.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  actionIcon: {
-    fontSize: 14,
-  },
   addButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
     backgroundColor: Colors.primary,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    minHeight: 40,
     borderRadius: 8,
   },
   addButtonText: {
@@ -192,13 +207,15 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   navArrow: {
-    padding: 8,
-    borderRadius: 6,
+    minWidth: 40,
+    minHeight: 40,
+    padding: 9,
+    borderRadius: 8,
     backgroundColor: Colors.surfaceSubtle,
-  },
-  navArrowText: {
-    fontSize: 14,
-    color: Colors.text.primary,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   dateLabelContainer: {
     flex: 1,
@@ -210,17 +227,20 @@ const styles = StyleSheet.create({
     color: Colors.text.primary,
   },
   todayButton: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    minHeight: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 8,
+    backgroundColor: Colors.surfaceBlue,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: Colors.infoBorder,
     marginRight: 8,
   },
   todayButtonText: {
     fontSize: 12,
     fontWeight: '600',
-    color: Colors.gold,
+    color: Colors.primary,
   },
 });
-

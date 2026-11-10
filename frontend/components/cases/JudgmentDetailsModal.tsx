@@ -13,6 +13,7 @@ import { useTranslation } from 'react-i18next';
 import { Card } from '../common/Card';
 import { Badge } from '../common/Badge';
 import { Button } from '../common/Button';
+import { AppIcon } from '../common/AppIcon';
 import { Colors } from '../../constants/colors';
 import { CaseItem, JudgmentItem } from '../../types';
 import { formatCaseNumber, formatDate } from '../../utils/formatters';
@@ -23,6 +24,22 @@ export interface JudgmentDetailsModalProps {
   caseItem: CaseItem | null;
   judgment?: JudgmentItem | null;
 }
+
+export const isOfficialJudgmentDocumentAvailable = (link?: string | null): boolean => {
+  if (!link || typeof link !== 'string') return false;
+  const trimmed = link.trim();
+  if (!trimmed) return false;
+  const lower = trimmed.toLowerCase();
+  if (
+    lower.includes('example.com') ||
+    lower.includes('example.org') ||
+    lower.includes('example.net') ||
+    lower.includes('placeholder')
+  ) {
+    return false;
+  }
+  return true;
+};
 
 export const JudgmentDetailsModal: React.FC<JudgmentDetailsModalProps> = ({
   visible,
@@ -37,15 +54,15 @@ export const JudgmentDetailsModal: React.FC<JudgmentDetailsModalProps> = ({
   }
 
   const effectiveJudgment = judgment || caseItem.latest_judgment;
+  const hasValidDocument = isOfficialJudgmentDocumentAvailable(
+    effectiveJudgment?.document_link
+  );
 
   const handleOpenDocument = async () => {
-    if (!effectiveJudgment?.document_link) {
+    if (!hasValidDocument || !effectiveJudgment?.document_link) {
       Alert.alert(
         t('judgment.noDocTitle', 'No Document Attached'),
-        t(
-          'judgment.noDocDescription',
-          'A certified copy has not yet been uploaded to the court docket repository.'
-        )
+        t('judgment.docNotUploaded', 'Official judgment PDF has not been uploaded yet.')
       );
       return;
     }
@@ -97,8 +114,9 @@ export const JudgmentDetailsModal: React.FC<JudgmentDetailsModalProps> = ({
                 onPress={onClose}
                 style={styles.closeBtn}
                 testID="judgment-modal-close"
+                accessibilityLabel={t('common.close', 'Close')}
               >
-                <Text style={styles.closeBtnText}>✕</Text>
+                <AppIcon name="x" size={16} color={Colors.text.secondary} />
               </TouchableOpacity>
             </View>
 
@@ -164,7 +182,7 @@ export const JudgmentDetailsModal: React.FC<JudgmentDetailsModalProps> = ({
                 <Text style={styles.sectionHeading}>
                   {t('judgment.document', 'Official Order Document')}
                 </Text>
-                {effectiveJudgment?.document_link ? (
+                {hasValidDocument ? (
                   <Button
                     title={t('judgment.downloadDoc', 'Open Official Judgment (PDF)')}
                     variant="primary"
@@ -172,11 +190,11 @@ export const JudgmentDetailsModal: React.FC<JudgmentDetailsModalProps> = ({
                     testID="open-judgment-doc-button"
                   />
                 ) : (
-                  <View style={styles.noDocNotice}>
-                    <Text style={styles.noDocText}>
+                  <View style={styles.noDocNotice} testID="no-judgment-doc-notice">
+                    <Text style={styles.noDocText} testID="no-judgment-doc-text">
                       {t(
-                        'judgment.docPendingRegistry',
-                        'Official sealed copy pending dispatch from APHC registry.'
+                        'judgment.docNotUploaded',
+                        'Official judgment PDF has not been uploaded yet.'
                       )}
                     </Text>
                   </View>
@@ -202,7 +220,7 @@ export const JudgmentDetailsModal: React.FC<JudgmentDetailsModalProps> = ({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    backgroundColor: Colors.overlay,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 16,
@@ -242,14 +260,9 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   closeBtn: {
-    padding: 6,
+    padding: 8,
     borderRadius: 16,
     backgroundColor: Colors.surfaceSubtle,
-  },
-  closeBtnText: {
-    color: Colors.text.muted,
-    fontSize: 14,
-    fontWeight: '700',
   },
   scrollBody: {
     maxHeight: 380,

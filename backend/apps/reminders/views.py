@@ -1,10 +1,11 @@
 from django.core.cache import cache
 from django.shortcuts import get_object_or_404
 from rest_framework import generics, permissions, status
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.cases.models import Hearing
+from apps.cases.models import Case, Hearing
 
 from .models import Reminder
 from .serializers import ReminderPreferenceSerializer, ReminderSerializer
@@ -31,7 +32,10 @@ class ReminderListCreateView(generics.ListCreateAPIView):
 
         case_id = self.request.query_params.get("case_id")
         if case_id:
-            queryset = queryset.filter(case_id=case_id)
+            try:
+                queryset = queryset.filter(case_id=int(case_id))
+            except (TypeError, ValueError) as exc:
+                raise ValidationError({"case_id": "case_id must be a valid integer."}) from exc
 
         is_completed = self.request.query_params.get("is_completed")
         if is_completed is not None:
@@ -54,33 +58,68 @@ class ReminderListCreateView(generics.ListCreateAPIView):
             if cached_data:
                 return Response(cached_data, status=status.HTTP_200_OK)
 
-        # Conflict check: if tied to a hearing that is CANCELLED on the server
-        hearing_id = request.data.get("hearing")
-        if hearing_id:
-            cancelled_hearing = Hearing.objects.filter(id=hearing_id, status="CANCELLED").first()
-            if cancelled_hearing:
+        case_raw = request.data.get("case")
+        hearing_raw = request.data.get("hearing")
+        parsed_case_id = None
+        parsed_hearing_id = None
+
+        if case_raw not in (None, ""):
+            try:
+                parsed_case_id = int(case_raw)
+            except (TypeError, ValueError) as exc:
+                raise ValidationError({"case": "Invalid case identifier."}) from exc
+            if not Case.objects.filter(id=parsed_case_id, tracked_by=request.user).exists():
+                raise ValidationError(
+                    {"case": "You can only attach reminders to cases you are tracking."}
+                )
+
+        if hearing_raw not in (None, ""):
+            try:
+                parsed_hearing_id = int(hearing_raw)
+            except (TypeError, ValueError) as exc:
+                raise ValidationError({"hearing": "Invalid hearing identifier."}) from exc
+
+            hearing_obj = (
+                Hearing.objects.filter(id=parsed_hearing_id, case__tracked_by=request.user)
+                .select_related("case")
+                .first()
+            )
+            if not hearing_obj:
+                raise ValidationError(
+                    {
+                        "hearing": (
+                            "You can only attach reminders to hearings for cases you are tracking."
+                        )
+                    }
+                )
+            if parsed_case_id is not None and hearing_obj.case_id != parsed_case_id:
+                raise ValidationError(
+                    {"hearing": "Selected hearing does not belong to the specified case."}
+                )
+
+            # Conflict check: ONLY after ownership is verified, check CANCELLED status
+            if hearing_obj.status == "CANCELLED":
                 return Response(
                     {
                         "detail": "Conflict: Linked hearing has been cancelled on court server.",
                         "status": "CONFLICT",
-                        "hearing_id": hearing_id,
+                        "hearing_id": parsed_hearing_id,
                     },
                     status=status.HTTP_409_CONFLICT,
                 )
 
-        # Duplicate check: prevent duplicate manual reminders for same advocate, title & due_date
-        title = request.data.get("title", "").strip()
+        # Duplicate check: prevent duplicate manual reminders for same advocate, title & target
+        title = str(request.data.get("title", "") or "").strip()
         due_date = request.data.get("due_date")
         reminder_type = request.data.get("reminder_type", "GENERAL")
-        case_id = request.data.get("case")
 
         if title and due_date:
             existing = Reminder.objects.filter(
                 advocate=request.user,
                 title=title,
                 reminder_type=reminder_type,
-                case_id=case_id or None,
-                hearing_id=hearing_id or None,
+                case_id=parsed_case_id,
+                hearing_id=parsed_hearing_id,
             ).first()
             if existing:
                 serializer = self.get_serializer(existing)
@@ -95,7 +134,7 @@ class ReminderListCreateView(generics.ListCreateAPIView):
         return response
 
     def perform_create(self, serializer):
-        serializer.save(advocate=self.request.user)
+        serializer.save(advocate=self.request.user, status="PENDING", is_completed=False)
 
 
 class ReminderDetailView(generics.RetrieveUpdateDestroyAPIView):

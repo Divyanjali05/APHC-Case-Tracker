@@ -1,8 +1,7 @@
-from urllib.parse import urlparse
-
 from decouple import Csv, config
 
 from .base import *  # noqa: F403
+from .base import build_postgresql_params_config, parse_postgresql_url
 
 DEBUG = False
 
@@ -29,37 +28,29 @@ if "*" in ALLOWED_HOSTS or any("*" in host for host in ALLOWED_HOSTS):
     raise ValueError("Wildcard ALLOWED_HOSTS is not permitted in production.")
 
 # Production PostgreSQL Database Configuration
-DATABASE_URL = config("DATABASE_URL", default=None)
-DB_NAME = config("DB_NAME", default=None)
+DATABASE_URL = (config("DATABASE_URL", default="") or "").strip() or None
+DB_NAME = (config("DB_NAME", default="") or "").strip() or None
 DB_USER = config("DB_USER", default="postgres")
 DB_PASSWORD = config("DB_PASSWORD", default="")
 DB_HOST = config("DB_HOST", default="localhost")
 DB_PORT = config("DB_PORT", default=5432, cast=int)
+DB_SSLMODE = (config("DB_SSLMODE", default="") or "").strip() or None
 
 if DATABASE_URL:
-    parsed_db = urlparse(DATABASE_URL)
     DATABASES = {
-        "default": {
-            "ENGINE": "django.db.backends.postgresql",
-            "NAME": parsed_db.path.lstrip("/"),
-            "USER": parsed_db.username or "postgres",
-            "PASSWORD": parsed_db.password or "",
-            "HOST": parsed_db.hostname or "localhost",
-            "PORT": parsed_db.port or 5432,
-            "CONN_MAX_AGE": 600,
-        }
+        "default": parse_postgresql_url(DATABASE_URL, conn_max_age=600),
     }
 elif DB_NAME:
     DATABASES = {
-        "default": {
-            "ENGINE": "django.db.backends.postgresql",
-            "NAME": DB_NAME,
-            "USER": DB_USER,
-            "PASSWORD": DB_PASSWORD,
-            "HOST": DB_HOST,
-            "PORT": DB_PORT,
-            "CONN_MAX_AGE": 600,
-        }
+        "default": build_postgresql_params_config(
+            name=DB_NAME,
+            user=DB_USER,
+            password=DB_PASSWORD,
+            host=DB_HOST,
+            port=DB_PORT,
+            sslmode=DB_SSLMODE,
+            conn_max_age=600,
+        ),
     }
 else:
     raise ValueError(
@@ -90,6 +81,10 @@ CACHES = {
 CORS_ALLOW_ALL_ORIGINS = False
 CORS_ALLOWED_ORIGINS = config("CORS_ALLOWED_ORIGINS", default="", cast=Csv())
 
+# Reverse Proxy & SSL Configuration
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+USE_X_FORWARDED_HOST = True
+
 # Security hardening
 SECURE_BROWSER_XSS_FILTER = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
@@ -97,6 +92,29 @@ X_FRAME_OPTIONS = "DENY"
 SECURE_SSL_REDIRECT = config("SECURE_SSL_REDIRECT", default=True, cast=bool)
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
+SESSION_COOKIE_HTTPONLY = True
+CSRF_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = "Lax"
+CSRF_COOKIE_SAMESITE = "Lax"
 SECURE_HSTS_SECONDS = 31536000
 SECURE_HSTS_INCLUDE_SUBDOMAINS = True
 SECURE_HSTS_PRELOAD = True
+
+# Sentry Error Tracking (Optional based on SENTRY_DSN presence)
+SENTRY_DSN = config("SENTRY_DSN", default="")
+if SENTRY_DSN:
+    try:
+        import sentry_sdk
+        from sentry_sdk.integrations.celery import CeleryIntegration
+        from sentry_sdk.integrations.django import DjangoIntegration
+        from sentry_sdk.integrations.redis import RedisIntegration
+
+        sentry_sdk.init(
+            dsn=SENTRY_DSN,
+            integrations=[DjangoIntegration(), CeleryIntegration(), RedisIntegration()],
+            traces_sample_rate=config("SENTRY_TRACES_SAMPLE_RATE", default=0.2, cast=float),
+            send_default_pii=False,
+            environment=config("ENVIRONMENT", default="production"),
+        )
+    except ImportError:
+        pass

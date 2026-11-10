@@ -1,13 +1,19 @@
 import React from 'react';
 import { render, fireEvent, screen } from '@testing-library/react-native';
+import { ScrollView } from 'react-native';
 import DashboardScreen from '../app/(tabs)/index';
 import { useDashboard } from '../features/cases/hooks';
 import { speechService } from '../services/speech/ttsService';
 import { DashboardData } from '../types';
 
+const mockPush = jest.fn();
+const mockChangeLanguage = jest.fn();
+const mockRefetchHealth = jest.fn().mockResolvedValue({});
+const mockRefetchDashboard = jest.fn().mockResolvedValue({});
+
 jest.mock('expo-router', () => ({
   useRouter: () => ({
-    push: jest.fn(),
+    push: mockPush,
   }),
 }));
 
@@ -37,11 +43,32 @@ jest.mock('react-i18next', () => {
       },
       i18n: {
         language: 'en',
-        changeLanguage: jest.fn(),
+        changeLanguage: mockChangeLanguage,
       },
     }),
   };
 });
+
+jest.mock('../components/notifications/NotificationCenterModal', () => ({
+  NotificationCenterModal: ({
+    visible,
+    testID,
+  }: {
+    visible: boolean;
+    testID?: string;
+  }) => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const React = require('react');
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { View, Text } = require('react-native');
+    if (!visible) return null;
+    return React.createElement(
+      View,
+      { testID: testID || 'dashboard-notification-center-modal' },
+      React.createElement(Text, null, 'Notification Center')
+    );
+  },
+}));
 
 jest.mock('../features/cases/hooks', () => ({
   useDashboard: jest.fn(),
@@ -57,7 +84,10 @@ jest.mock('../services/speech/ttsService', () => ({
   },
 }));
 
-const mockDashboardData: DashboardData & { isOfflineCached?: boolean; cachedAt?: string } = {
+const mockDashboardData: DashboardData & {
+  isOfflineCached?: boolean;
+  cachedAt?: string;
+} = {
   summary: {
     total_cases: 12,
     pending_cases: 7,
@@ -116,6 +146,17 @@ const mockDashboardData: DashboardData & { isOfflineCached?: boolean; cachedAt?:
       case_id: 1,
     },
   ],
+  recent_activity: [
+    {
+      id: 401,
+      case_id: 1,
+      case_number: 'WP 1234/2024',
+      event_type: 'HEARING_SCHEDULED',
+      description: 'Hearing appearance listed in Court Hall 4',
+      source: 'MANUAL',
+      created_at: '2026-11-07T08:00:00Z',
+    },
+  ],
   sync_status: {
     last_synced_at: '2026-11-07T09:00:00Z',
     is_fresh: true,
@@ -139,14 +180,14 @@ describe('DashboardScreen Component', () => {
       },
       isLoading: false,
       isError: false,
-      refetch: jest.fn(),
+      refetch: mockRefetchHealth,
     });
 
     (useDashboard as jest.Mock).mockReturnValue({
       data: mockDashboardData,
       isLoading: false,
       isError: false,
-      refetch: jest.fn(),
+      refetch: mockRefetchDashboard,
       isRefetching: false,
     });
   });
@@ -207,22 +248,32 @@ describe('DashboardScreen Component', () => {
     expect(screen.getByTestId('recent-notifications-section')).toBeTruthy();
     expect(screen.getByTestId('notification-item-301')).toBeTruthy();
     expect(screen.getByText(/Item 12 Called/)).toBeTruthy();
+
+    expect(screen.getByTestId('recent-activity-section')).toBeTruthy();
+    expect(screen.getByTestId('recent-activity-item-401')).toBeTruthy();
+    expect(screen.getByText('Hearing appearance listed in Court Hall 4')).toBeTruthy();
   });
 
   it('renders clean empty states when no court hearings or reminders exist', () => {
     (useDashboard as jest.Mock).mockReturnValue({
       data: {
-        summary: { total_cases: 0, pending_cases: 0, disposed_cases: 0, adjourned_cases: 0 },
+        summary: {
+          total_cases: 0,
+          pending_cases: 0,
+          disposed_cases: 0,
+          adjourned_cases: 0,
+        },
         today_hearings: [],
         upcoming_hearings: [],
         upcoming_reminders: [],
         recent_notifications: [],
+        recent_activity: [],
         sync_status: { last_synced_at: null, is_fresh: false, status: 'NEVER_SYNCED' },
         isOfflineCached: false,
       },
       isLoading: false,
       isError: false,
-      refetch: jest.fn(),
+      refetch: mockRefetchDashboard,
       isRefetching: false,
     });
 
@@ -232,6 +283,7 @@ describe('DashboardScreen Component', () => {
     expect(screen.getByText('No upcoming hearings found.')).toBeTruthy();
     expect(screen.getByText('No pending reminders.')).toBeTruthy();
     expect(screen.getByText('No recent notifications.')).toBeTruthy();
+    expect(screen.getByText('No recent docket activity recorded yet.')).toBeTruthy();
   });
 
   it('displays encrypted offline snapshot banner when running from offline cache', () => {
@@ -243,7 +295,7 @@ describe('DashboardScreen Component', () => {
       },
       isLoading: false,
       isError: false,
-      refetch: jest.fn(),
+      refetch: mockRefetchDashboard,
       isRefetching: false,
     });
 
@@ -270,7 +322,7 @@ describe('DashboardScreen Component', () => {
       data: undefined,
       isLoading: false,
       isError: true,
-      refetch: jest.fn(),
+      refetch: mockRefetchDashboard,
       isRefetching: false,
     });
 
@@ -278,5 +330,113 @@ describe('DashboardScreen Component', () => {
 
     expect(screen.getByText('Failed to load dashboard data')).toBeTruthy();
     expect(screen.getByTestId('dashboard-retry-button')).toBeTruthy();
+  });
+
+  it('handles language switching on lang-toggle press (Test A)', () => {
+    render(<DashboardScreen />);
+
+    const langBtn = screen.getByTestId('dashboard-lang-toggle');
+    expect(langBtn).toBeTruthy();
+    fireEvent.press(langBtn);
+
+    // Initial language is 'en', so nextLanguage() returns 'te'
+    expect(mockChangeLanguage).toHaveBeenCalledWith('te');
+  });
+
+  it('opens NotificationCenterModal on notification button press (Test B)', () => {
+    render(<DashboardScreen />);
+
+    // Initially modal is not rendered
+    expect(screen.queryByTestId('dashboard-notification-center-modal')).toBeNull();
+
+    const notifBtn = screen.getByTestId('open-notifications-center-btn');
+    expect(notifBtn).toBeTruthy();
+    fireEvent.press(notifBtn);
+
+    // Modal is now rendered
+    expect(screen.getByTestId('dashboard-notification-center-modal')).toBeTruthy();
+  });
+
+  it("navigates to case details on today's hearing item press (Test C)", () => {
+    render(<DashboardScreen />);
+
+    const hearingItem = screen.getByTestId('today-hearing-item-101');
+    expect(hearingItem).toBeTruthy();
+    fireEvent.press(hearingItem);
+
+    // mockDashboardData today_hearings[0] has case_id: 1
+    expect(mockPush).toHaveBeenCalledWith('/cases/1');
+  });
+
+  it('triggers pull-to-refresh and refetches dashboard and health queries (Test D)', async () => {
+    const { UNSAFE_getByType } = render(<DashboardScreen />);
+    const scrollView = UNSAFE_getByType(ScrollView);
+    expect(scrollView.props.refreshControl).toBeTruthy();
+
+    await scrollView.props.refreshControl.props.onRefresh();
+
+    expect(mockRefetchDashboard).toHaveBeenCalled();
+    expect(mockRefetchHealth).toHaveBeenCalled();
+  });
+
+  it('navigates to tokens tab on tokens action press (Test E)', () => {
+    render(<DashboardScreen />);
+
+    const tokensAction = screen.getByTestId('dashboard-tokens-action');
+    expect(tokensAction).toBeTruthy();
+    fireEvent.press(tokensAction);
+
+    expect(mockPush).toHaveBeenCalledWith('/(tabs)/tokens');
+  });
+
+  it('displays Demo Environment banner and badge when isDemoData is true', () => {
+    (useDashboard as jest.Mock).mockReturnValue({
+      data: {
+        ...mockDashboardData,
+        isDemoData: true,
+        sync_status: {
+          last_synced_at: new Date().toISOString(),
+          status: 'DEMO',
+        },
+      },
+      isLoading: false,
+      isError: false,
+      refetch: mockRefetchDashboard,
+      isRefetching: false,
+    });
+
+    render(<DashboardScreen />);
+
+    expect(screen.getByTestId('dashboard-demo-banner')).toBeTruthy();
+    expect(screen.getByText('DEMO MODE — LOCAL SAMPLE DATA')).toBeTruthy();
+    const syncBadge = screen.getByTestId('sync-status-badge');
+    expect(syncBadge).toBeTruthy();
+    expect(screen.getByText('DEMO ENVIRONMENT')).toBeTruthy();
+  });
+
+  it('hides Demo banner when isDemoData is false/absent', () => {
+    (useDashboard as jest.Mock).mockReturnValue({
+      data: {
+        ...mockDashboardData,
+        isDemoData: false,
+      },
+      isLoading: false,
+      isError: false,
+      refetch: mockRefetchDashboard,
+      isRefetching: false,
+    });
+
+    render(<DashboardScreen />);
+
+    expect(screen.queryByTestId('dashboard-demo-banner')).toBeNull();
+  });
+
+  it('navigates to case details when recent activity item is pressed', () => {
+    render(<DashboardScreen />);
+
+    const activityItem = screen.getByTestId('recent-activity-item-401');
+    fireEvent.press(activityItem);
+
+    expect(mockPush).toHaveBeenCalledWith('/cases/1');
   });
 });

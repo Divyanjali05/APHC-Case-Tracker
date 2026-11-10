@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import {
   View,
   Text,
-  TextInput,
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
@@ -14,8 +13,13 @@ import { useTranslation } from 'react-i18next';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { ScreenContainer } from '../../components/common/ScreenContainer';
+import { Card } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
+import { Badge } from '../../components/common/Badge';
+import { Input } from '../../components/common/Input';
+import { AppIcon } from '../../components/common/AppIcon';
 import { Colors } from '../../constants/colors';
+import { Radius, Spacing, Typography } from '../../constants/theme';
 import {
   forgotPasswordSchema,
   ForgotPasswordFormData,
@@ -45,7 +49,6 @@ export default function ForgotPasswordScreen() {
       await authService.requestPasswordReset(data.enrollmentNumber);
       setIsSuccess(true);
     } catch {
-      // Even if network error occurs, show handled error state
       setErrorMessage('Unable to connect to the reset service. Please try again later.');
     }
   };
@@ -59,20 +62,44 @@ export default function ForgotPasswordScreen() {
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
         >
-          <View style={styles.header}>
-            <Text style={styles.courtName}>{t('common.courtName')}</Text>
-            <Text style={styles.title}>{t('auth.forgotPasswordTitle')}</Text>
-            <Text style={styles.subtitle}>{t('auth.forgotPasswordSubtitle')}</Text>
+          {/* Header Branding Area */}
+          <View style={styles.headerContainer}>
+            <View style={styles.badgeRow}>
+              <Badge
+                label={t('common.courtName', 'High Court of Andhra Pradesh')}
+                variant="gold"
+              />
+            </View>
+            <Text style={styles.title}>
+              {t('auth.forgotPasswordTitle', 'Reset Password')}
+            </Text>
+            <Text style={styles.subtitle}>
+              {t(
+                'auth.forgotPasswordSubtitle',
+                'Enter your Bar Council enrollment number to receive password reset instructions.'
+              )}
+            </Text>
           </View>
 
           {isSuccess ? (
-            <View style={styles.successCard} testID="success-card">
-              <Text style={styles.successTitle}>{t('auth.requestSentTitle')}</Text>
-              <Text style={styles.successMessage}>{t('auth.requestSentMessage')}</Text>
+            <Card style={styles.successCard} testID="success-card">
+              <View style={styles.successBadgeSlot}>
+                <Badge label="INSTRUCTIONS SENT" variant="success" />
+              </View>
+              <Text style={styles.successTitle}>
+                {t('auth.requestSentTitle', 'Instructions Dispatched')}
+              </Text>
+              <Text style={styles.successMessage}>
+                {t(
+                  'auth.requestSentMessage',
+                  'If an account exists with the provided enrollment number, instructions have been sent.'
+                )}
+              </Text>
 
               <Button
-                title={t('auth.resetPassword')}
+                title={t('auth.resetPassword', 'Reset Password')}
                 onPress={() => router.push('/(auth)/reset-password')}
                 style={styles.actionButton}
                 testID="navigate-reset-button"
@@ -82,44 +109,48 @@ export default function ForgotPasswordScreen() {
                 onPress={() => router.replace('/(auth)/login')}
                 style={styles.backLink}
                 testID="back-to-login-link"
+                accessibilityRole="link"
               >
-                <Text style={styles.backLinkText}>← {t('auth.backToLogin')}</Text>
+                <View style={styles.backLinkRow}>
+                  <AppIcon name="arrow-left" size={14} color={Colors.primary} />
+                  <Text style={styles.backLinkText}>
+                    {t('auth.backToLogin', 'Back to Sign In')}
+                  </Text>
+                </View>
               </TouchableOpacity>
-            </View>
+            </Card>
           ) : (
-            <View style={styles.form}>
+            <Card style={styles.formCard}>
               {errorMessage ? (
                 <View style={styles.errorBanner} testID="error-banner">
                   <Text style={styles.errorBannerText}>{errorMessage}</Text>
                 </View>
               ) : null}
 
-              <Text style={styles.label}>{t('auth.enrollmentNumber')}</Text>
               <Controller
                 control={control}
                 name="enrollmentNumber"
                 render={({ field: { onChange, onBlur, value } }) => (
-                  <TextInput
-                    style={[styles.input, errors.enrollmentNumber && styles.inputError]}
-                    placeholder={t('auth.enrollmentPlaceholder')}
-                    placeholderTextColor={Colors.text.muted}
-                    autoCapitalize="characters"
-                    onBlur={onBlur}
-                    onChangeText={onChange}
+                  <Input
+                    label={t('auth.enrollmentNumber', 'Bar Council Enrollment Number')}
+                    placeholder={t('auth.enrollmentPlaceholder', 'AP/1234/2020')}
                     value={value}
+                    onChangeText={onChange}
+                    onBlur={onBlur}
+                    autoCapitalize="characters"
+                    error={errors.enrollmentNumber?.message}
                     testID="enrollment-input"
+                    errorTestID="enrollment-error"
+                    helperText="Enter in format AP/1234/2020 as registered with the Bar Council."
                   />
                 )}
               />
-              {errors.enrollmentNumber ? (
-                <Text style={styles.fieldError} testID="enrollment-error">
-                  {errors.enrollmentNumber.message}
-                </Text>
-              ) : null}
 
               <Button
                 title={
-                  isSubmitting ? t('auth.submitting') : t('auth.sendResetInstructions')
+                  isSubmitting
+                    ? t('auth.submitting', 'Submitting...')
+                    : t('auth.sendResetInstructions', 'Send Reset Instructions')
                 }
                 onPress={handleSubmit(onSubmit)}
                 loading={isSubmitting}
@@ -131,10 +162,16 @@ export default function ForgotPasswordScreen() {
                 onPress={() => router.replace('/(auth)/login')}
                 style={styles.backLink}
                 testID="back-to-login-link"
+                accessibilityRole="link"
               >
-                <Text style={styles.backLinkText}>← {t('auth.backToLogin')}</Text>
+                <View style={styles.backLinkRow}>
+                  <AppIcon name="arrow-left" size={14} color={Colors.primary} />
+                  <Text style={styles.backLinkText}>
+                    {t('auth.backToLogin', 'Back to Sign In')}
+                  </Text>
+                </View>
               </TouchableOpacity>
-            </View>
+            </Card>
           )}
         </ScrollView>
       </KeyboardAvoidingView>
@@ -149,104 +186,99 @@ const styles = StyleSheet.create({
   scrollContent: {
     flexGrow: 1,
     justifyContent: 'center',
-    paddingVertical: 20,
+    paddingVertical: Spacing.xl,
   },
-  header: {
-    marginBottom: 24,
+  headerContainer: {
+    marginBottom: Spacing.lg,
   },
-  courtName: {
-    color: Colors.gold,
-    fontSize: 13,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-    marginBottom: 6,
+  badgeRow: {
+    marginBottom: Spacing.sm,
   },
   title: {
+    ...Typography.screenTitle,
     color: Colors.text.primary,
     fontSize: 26,
+    lineHeight: 32,
     fontWeight: '800',
-    marginBottom: 8,
+    letterSpacing: -0.5,
   },
   subtitle: {
-    color: Colors.text.secondary,
+    ...Typography.body,
     fontSize: 14,
     lineHeight: 20,
+    color: Colors.text.secondary,
+    marginTop: Spacing.xs,
   },
-  form: {
+  formCard: {
     backgroundColor: Colors.surface,
-    padding: 20,
-    borderRadius: 16,
+    padding: Spacing.xl,
+    borderRadius: Radius.card,
     borderWidth: 1,
     borderColor: Colors.border,
-  },
-  label: {
-    color: Colors.text.primary,
-    fontSize: 13,
-    fontWeight: '600',
-    marginBottom: 6,
-  },
-  input: {
-    backgroundColor: Colors.surfaceSubtle,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    color: Colors.text.primary,
-    fontSize: 15,
-  },
-  inputError: {
-    borderColor: Colors.danger,
-  },
-  fieldError: {
-    color: Colors.danger,
-    fontSize: 12,
-    marginTop: 4,
-  },
-  errorBanner: {
-    backgroundColor: '#7F1D1D',
-    padding: 12,
-    borderRadius: 10,
-    marginBottom: 16,
-  },
-  errorBannerText: {
-    color: '#FEE2E2',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  submitButton: {
-    marginTop: 20,
-  },
-  backLink: {
-    marginTop: 16,
-    alignItems: 'center',
-    paddingVertical: 8,
-  },
-  backLinkText: {
-    color: Colors.primaryLight,
-    fontSize: 14,
-    fontWeight: '600',
   },
   successCard: {
     backgroundColor: Colors.surface,
-    padding: 24,
-    borderRadius: 16,
+    padding: Spacing.xl,
+    borderRadius: Radius.card,
     borderWidth: 1,
-    borderColor: Colors.gold,
+    borderColor: Colors.border,
+    alignItems: 'center',
+  },
+  successBadgeSlot: {
+    marginBottom: Spacing.md,
   },
   successTitle: {
-    color: Colors.gold,
-    fontSize: 18,
+    ...Typography.sectionTitle,
+    color: Colors.text.primary,
+    fontSize: 20,
+    lineHeight: 26,
     fontWeight: '700',
-    marginBottom: 8,
+    textAlign: 'center',
+    marginBottom: Spacing.sm,
   },
   successMessage: {
-    color: Colors.text.primary,
+    ...Typography.body,
     fontSize: 14,
-    lineHeight: 22,
-    marginBottom: 20,
+    lineHeight: 20,
+    color: Colors.text.secondary,
+    textAlign: 'center',
+    marginBottom: Spacing.xl,
+  },
+  errorBanner: {
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FCA5A5',
+    padding: Spacing.md,
+    borderRadius: Radius.button,
+    marginBottom: Spacing.md,
+  },
+  errorBannerText: {
+    color: Colors.danger,
+    fontSize: 13,
+    fontWeight: '600',
+    lineHeight: 18,
+  },
+  submitButton: {
+    marginTop: Spacing.sm,
+    marginBottom: Spacing.md,
   },
   actionButton: {
-    marginBottom: 12,
+    width: '100%',
+    marginBottom: Spacing.md,
+  },
+  backLink: {
+    alignSelf: 'center',
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+  },
+  backLinkRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  backLinkText: {
+    color: Colors.primary,
+    fontSize: 14,
+    fontWeight: '600',
   },
 });

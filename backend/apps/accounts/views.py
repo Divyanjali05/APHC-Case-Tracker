@@ -1,4 +1,5 @@
 from django.contrib.auth import get_user_model
+from django.db import transaction
 from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
@@ -9,13 +10,16 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from .models import AdvocateProfile, OTPVerification
 from .serializers import (
     AdvocateRegisterSerializer,
+    APHCJwtTokenObtainPairSerializer,
     ChangePasswordSerializer,
     PasswordResetConfirmSerializer,
     PasswordResetRequestSerializer,
     RequestOTPSerializer,
+    UserProfileUpdateSerializer,
     UserSerializer,
     VerifyOTPSerializer,
     VerifyRegistrationOTPSerializer,
+    issue_tokens_for_user,
 )
 from .services import OTPService, PasswordResetDeliveryService
 
@@ -23,8 +27,9 @@ User = get_user_model()
 
 
 class ThrottledTokenObtainPairView(TokenObtainPairView):
-    """Obtain JWT token pair with rate limiting."""
+    """Obtain JWT token pair with role claims and rate limiting."""
 
+    serializer_class = APHCJwtTokenObtainPairSerializer
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "auth"
 
@@ -95,6 +100,22 @@ class AdvocateRegisterView(APIView):
         username = enrollment.replace("/", "").strip().upper()
 
         user = User.objects.filter(username__iexact=username).first()
+        if user:
+            existing_profile = getattr(user, "advocate_profile", None)
+            if (
+                user.is_staff
+                or user.is_superuser
+                or (existing_profile and existing_profile.is_verified)
+            ):
+                return Response(
+                    {
+                        "error": (
+                            "An active account already exists for this Bar Council enrollment number."
+                        )
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
         if not user:
             user = User.objects.create_user(
                 username=username,
@@ -102,13 +123,18 @@ class AdvocateRegisterView(APIView):
                 password=password,
                 first_name=first_name,
                 last_name=last_name,
-                is_active=True,
+                is_active=False,
+                is_staff=False,
+                is_superuser=False,
             )
         else:
             user.set_password(password)
             user.email = email
             user.first_name = first_name
             user.last_name = last_name
+            user.is_active = False
+            user.is_staff = False
+            user.is_superuser = False
             user.save()
 
         profile, _ = AdvocateProfile.objects.get_or_create(
@@ -202,14 +228,14 @@ class VerifyRegistrationOTPView(APIView):
         user.is_active = True
         user.save(update_fields=["is_active"])
 
-        # Generate JWT Token Pair
-        refresh = RefreshToken.for_user(user)
+        # Generate JWT Token Pair with canonical role claim
+        tokens = issue_tokens_for_user(user)
 
         return Response(
             {
                 "detail": "Advocate account verified and activated successfully.",
-                "access": str(refresh.access_token),
-                "refresh": str(refresh),
+                "access": tokens["access"],
+                "refresh": tokens["refresh"],
                 "user": UserSerializer(user).data,
             },
             status=status.HTTP_200_OK,
@@ -340,12 +366,12 @@ class VerifyOTPView(APIView):
             )
 
         if purpose == OTPVerification.PURPOSE_LOGIN and user:
-            refresh = RefreshToken.for_user(user)
+            tokens = issue_tokens_for_user(user)
             return Response(
                 {
                     "detail": "Login verification successful.",
-                    "access": str(refresh.access_token),
-                    "refresh": str(refresh),
+                    "access": tokens["access"],
+                    "refresh": tokens["refresh"],
                     "user": UserSerializer(user).data,
                 },
                 status=status.HTTP_200_OK,
@@ -396,13 +422,13 @@ class ChangePasswordView(APIView):
             pass
 
         # Issue fresh token pair so current session continues smoothly
-        new_refresh = RefreshToken.for_user(user)
+        tokens = issue_tokens_for_user(user)
 
         return Response(
             {
                 "detail": "Password changed successfully.",
-                "access": str(new_refresh.access_token),
-                "refresh": str(new_refresh),
+                "access": tokens["access"],
+                "refresh": tokens["refresh"],
             },
             status=status.HTTP_200_OK,
         )
@@ -503,13 +529,44 @@ class PasswordResetConfirmView(APIView):
 
 
 class ProfileView(APIView):
-    """Retrieve or update the authenticated advocate's profile."""
+    """Retrieve or update the authenticated user's safe profile attributes."""
 
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
         serializer = UserSerializer(request.user)
         return Response(serializer.data)
+
+    @transaction.atomic
+    def patch(self, request):
+        serializer = UserProfileUpdateSerializer(
+            data=request.data,
+            context={"user": request.user},
+        )
+        serializer.is_valid(raise_exception=True)
+        validated = serializer.validated_data
+
+        user = request.user
+        user_fields_to_update = []
+        for field in ("first_name", "last_name", "email"):
+            if field in validated:
+                setattr(user, field, validated[field])
+                user_fields_to_update.append(field)
+        if user_fields_to_update:
+            user.save(update_fields=user_fields_to_update)
+
+        profile = AdvocateProfile.objects.filter(user=user).first()
+        if profile:
+            profile_fields_to_update = []
+            for field in ("phone_number", "chamber_address", "preferred_language"):
+                if field in validated:
+                    setattr(profile, field, validated[field])
+                    profile_fields_to_update.append(field)
+            if profile_fields_to_update:
+                profile.save(update_fields=[*profile_fields_to_update, "updated_at"])
+
+        user.refresh_from_db()
+        return Response(UserSerializer(user).data, status=status.HTTP_200_OK)
 
 
 class AccountsStatusView(APIView):

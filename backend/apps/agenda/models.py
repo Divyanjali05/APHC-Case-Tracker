@@ -63,7 +63,9 @@ class CalendarSyncSetting(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self) -> str:
-        return f"CalendarSync: {self.advocate.username} ({self.provider}, enabled={self.sync_enabled})"
+        return (
+            f"CalendarSync: {self.advocate.username} ({self.provider}, enabled={self.sync_enabled})"
+        )
 
 
 class ExternalCalendarEventMap(models.Model):
@@ -121,4 +123,3 @@ class ExternalCalendarEventMap(models.Model):
 
     def __str__(self) -> str:
         return f"ExtMap: {self.advocate.username} [{self.event_type}] -> {self.external_event_id}"
-

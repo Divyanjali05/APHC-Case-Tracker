@@ -1,0 +1,169 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: aphc_prod_db
+    restart: always
+    environment:
+      POSTGRES_DB: ${DB_NAME:-highcourt_lawyer_db}
+      POSTGRES_USER: ${DB_USER:-aphc_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be provided}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - internal_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-aphc_user} -d ${DB_NAME:-highcourt_lawyer_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: aphc_prod_redis
+    restart: always
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:-}"]
+    volumes:
+      - redis_data:/data
+    networks:
+      - internal_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  web:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: aphc_prod_web
+    restart: always
+    env_file:
+      - .env.production
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.production
+      DB_HOST: db
+      DB_PORT: 5432
+      REDIS_URL: redis://:${REDIS_PASSWORD:-}@redis:6379/0
+      CELERY_BROKER_URL: redis://:${REDIS_PASSWORD:-}@redis:6379/0
+      CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD:-}@redis:6379/1
+    volumes:
+      - static_volume:/app/staticfiles
+      - media_volume:/app/media
+      - protected_media_volume:/app/protected_media
+      - app_logs:/app/logs
+    networks:
+      - internal_network
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/api/health/"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  celery_worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: aphc_prod_celery_worker
+    restart: always
+    command: ["celery", "-A", "config", "worker", "-l", "info", "--concurrency=2", "-Q", "celery"]
+    env_file:
+      - .env.production
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.production
+      DB_HOST: db
+      DB_PORT: 5432
+      REDIS_URL: redis://:${REDIS_PASSWORD:-}@redis:6379/0
+      CELERY_BROKER_URL: redis://:${REDIS_PASSWORD:-}@redis:6379/0
+      CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD:-}@redis:6379/1
+    volumes:
+      - media_volume:/app/media
+      - protected_media_volume:/app/protected_media
+      - app_logs:/app/logs
+    networks:
+      - internal_network
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  celery_beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: aphc_prod_celery_beat
+    restart: always
+    command: ["celery", "-A", "config", "beat", "-l", "info", "--pidfile=/tmp/celerybeat.pid"]
+    env_file:
+      - .env.production
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.production
+      DB_HOST: db
+      DB_PORT: 5432
+      REDIS_URL: redis://:${REDIS_PASSWORD:-}@redis:6379/0
+      CELERY_BROKER_URL: redis://:${REDIS_PASSWORD:-}@redis:6379/0
+      CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD:-}@redis:6379/1
+    volumes:
+      - app_logs:/app/logs
+    networks:
+      - internal_network
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: aphc_prod_nginx
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - DOMAIN_NAME=${DOMAIN_NAME:-api.aphc-lawyer.in}
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/templates/default.conf.template:ro
+      - static_volume:/app/staticfiles:ro
+      - media_volume:/app/media:ro
+      - protected_media_volume:/app/protected_media:ro
+      - certbot_conf:/etc/letsencrypt
+      - certbot_www:/var/www/certbot
+      - nginx_logs:/var/log/nginx
+    networks:
+      - internal_network
+    depends_on:
+      - web
+
+  certbot:
+    image: certbot/certbot:latest
+    container_name: aphc_prod_certbot
+    restart: unless-stopped
+    volumes:
+      - certbot_conf:/etc/letsencrypt
+      - certbot_www:/var/www/certbot
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+
+networks:
+  internal_network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  static_volume:
+  media_volume:
+  protected_media_volume:
+  certbot_conf:
+  certbot_www:
+  app_logs:
+  nginx_logs:

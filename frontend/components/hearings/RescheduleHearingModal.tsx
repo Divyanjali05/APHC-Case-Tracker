@@ -12,6 +12,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import { Badge } from '../common/Badge';
 import { Button } from '../common/Button';
+import { AppIcon } from '../common/AppIcon';
 import { VoiceInputModal } from '../speech/VoiceInputModal';
 import { Colors } from '../../constants/colors';
 import { HearingItem } from '../../types';
@@ -153,8 +154,9 @@ export const RescheduleHearingModal: React.FC<RescheduleHearingModalProps> = ({
               onPress={handleReset}
               style={styles.closeButton}
               testID="reschedule-modal-close-btn"
+              accessibilityLabel={t('common.close', 'Close')}
             >
-              <Text style={styles.closeButtonText}>✕</Text>
+              <AppIcon name="x" size={18} color={Colors.text.secondary} />
             </TouchableOpacity>
           </View>
 
@@ -262,8 +264,9 @@ export const RescheduleHearingModal: React.FC<RescheduleHearingModalProps> = ({
                     accessibilityLabel={t('voice.dictateReason', 'Voice Dictation')}
                     accessibilityRole="button"
                   >
+                    <AppIcon name="mic" size={12} color={Colors.primary} />
                     <Text style={styles.voiceReasonBtnText}>
-                      🎤 {t('voice.dictateReason', 'Dictate')}
+                      {t('voice.dictateReason', 'Dictate')}
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -381,7 +384,7 @@ export const RescheduleHearingModal: React.FC<RescheduleHearingModalProps> = ({
 const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    backgroundColor: Colors.overlay,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 16,
@@ -423,11 +426,6 @@ const styles = StyleSheet.create({
     padding: 6,
     marginLeft: 8,
   },
-  closeButtonText: {
-    color: Colors.text.secondary,
-    fontSize: 18,
-    fontWeight: '700',
-  },
   scrollContent: {
     padding: 18,
   },
@@ -455,15 +453,15 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   errorBanner: {
-    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+    backgroundColor: Colors.dangerSurface,
     borderWidth: 1,
-    borderColor: Colors.danger,
+    borderColor: Colors.dangerBorder,
     borderRadius: 8,
     padding: 10,
     marginBottom: 14,
   },
   errorBannerText: {
-    color: '#FCA5A5',
+    color: Colors.danger,
     fontSize: 12,
     fontWeight: '600',
   },
@@ -478,16 +476,19 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   voiceReasonBtn: {
-    backgroundColor: Colors.surface,
-    borderColor: Colors.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: Colors.surfaceBlue,
+    borderColor: Colors.infoBorder,
     borderWidth: 1,
     borderRadius: 6,
     paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingVertical: 4,
   },
   voiceReasonBtnText: {
-    fontSize: 11,
-    color: Colors.gold,
+    fontSize: 12,
+    color: Colors.primary,
     fontWeight: '600',
   },
   inputLabel: {

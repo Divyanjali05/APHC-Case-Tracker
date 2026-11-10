@@ -72,16 +72,18 @@ class RealtimeService:
             return cls._redis_client if cls._redis_is_available else None
 
         cls._redis_last_check = now
-        redis_url = getattr(settings, "REDIS_CACHE_URL", None) or getattr(
-            settings, "CELERY_BROKER_URL", None
+        redis_url = (
+            getattr(settings, "REDIS_CACHE_URL", None)
+            or getattr(settings, "REDIS_URL", None)
+            or getattr(settings, "CELERY_BROKER_URL", None)
         )
-        if not redis_url or not redis_url.startswith("redis://"):
+        if not redis_url or not redis_url.startswith(("redis://", "rediss://")):
             cls._redis_is_available = False
             return None
         try:
             import redis
 
-            client = redis.from_url(redis_url, socket_timeout=0.1)
+            client = redis.from_url(redis_url, socket_connect_timeout=0.1, socket_timeout=0.1)
             client.ping()
             cls._redis_client = client
             cls._redis_is_available = True

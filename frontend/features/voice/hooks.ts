@@ -14,7 +14,10 @@ export interface VoiceNoteFilters {
   status?: string;
 }
 
-export const useCaseVoiceNotes = (caseId: number | string, filters?: VoiceNoteFilters) => {
+export const useCaseVoiceNotes = (
+  caseId: number | string,
+  filters?: VoiceNoteFilters
+) => {
   return useQuery({
     queryKey: ['case-voice-notes', caseId, filters],
     queryFn: async (): Promise<VoiceNoteItem[]> => {
@@ -23,10 +26,9 @@ export const useCaseVoiceNotes = (caseId: number | string, filters?: VoiceNoteFi
       if (filters?.language) params.language = filters.language;
       if (filters?.status) params.status = filters.status;
 
-      const response = await apiClient.get<VoiceNoteItem[] | { results?: VoiceNoteItem[] }>(
-        ENDPOINTS.VOICE.CASE_NOTES(caseId),
-        { params }
-      );
+      const response = await apiClient.get<
+        VoiceNoteItem[] | { results?: VoiceNoteItem[] }
+      >(ENDPOINTS.VOICE.CASE_NOTES(caseId), { params });
       if (Array.isArray(response.data)) {
         return response.data;
       }
@@ -40,7 +42,9 @@ export const useVoiceNoteDetail = (noteId: number | string) => {
   return useQuery({
     queryKey: ['voice-note-detail', noteId],
     queryFn: async (): Promise<VoiceNoteItem> => {
-      const response = await apiClient.get<VoiceNoteItem>(ENDPOINTS.VOICE.NOTE_DETAIL(noteId));
+      const response = await apiClient.get<VoiceNoteItem>(
+        ENDPOINTS.VOICE.NOTE_DETAIL(noteId)
+      );
       return response.data;
     },
     enabled: !!noteId,
@@ -112,9 +116,13 @@ export const useUpdateVoiceNote = () => {
       return response.data;
     },
     onSuccess: (updatedNote, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['voice-note-detail', variables.noteId] });
+      queryClient.invalidateQueries({
+        queryKey: ['voice-note-detail', variables.noteId],
+      });
       if (variables.caseId) {
-        queryClient.invalidateQueries({ queryKey: ['case-voice-notes', variables.caseId] });
+        queryClient.invalidateQueries({
+          queryKey: ['case-voice-notes', variables.caseId],
+        });
       } else {
         queryClient.invalidateQueries({ queryKey: ['case-voice-notes'] });
       }
@@ -136,7 +144,9 @@ export const useDeleteVoiceNote = () => {
     },
     onSuccess: (_, variables) => {
       if (variables.caseId) {
-        queryClient.invalidateQueries({ queryKey: ['case-voice-notes', variables.caseId] });
+        queryClient.invalidateQueries({
+          queryKey: ['case-voice-notes', variables.caseId],
+        });
       } else {
         queryClient.invalidateQueries({ queryKey: ['case-voice-notes'] });
       }
@@ -164,13 +174,16 @@ export const useTranscribeVoiceNote = () => {
       return response.data;
     },
     onSuccess: (updatedNote, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['voice-note-detail', variables.noteId] });
+      queryClient.invalidateQueries({
+        queryKey: ['voice-note-detail', variables.noteId],
+      });
       if (variables.caseId) {
-        queryClient.invalidateQueries({ queryKey: ['case-voice-notes', variables.caseId] });
+        queryClient.invalidateQueries({
+          queryKey: ['case-voice-notes', variables.caseId],
+        });
       } else {
         queryClient.invalidateQueries({ queryKey: ['case-voice-notes'] });
       }
     },
   });
 };
-

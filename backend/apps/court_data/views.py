@@ -135,8 +135,9 @@ class CourtStatusSyncStatusView(APIView):
         provider = get_court_data_provider()
         health_info = provider.check_health()
 
-        latest_listing = CourtListing.objects.order_by("-last_synced_at").first()
-        total_listings = CourtListing.objects.count()
+        user_listings = CourtListing.objects.filter(case__tracked_by=request.user)
+        latest_listing = user_listings.order_by("-last_synced_at").first()
+        total_listings = user_listings.count()
 
         payload = {
             "status": health_info.get("status", "unknown"),

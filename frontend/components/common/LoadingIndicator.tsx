@@ -1,15 +1,33 @@
 import React from 'react';
-import { View, ActivityIndicator, Text, StyleSheet } from 'react-native';
+import {
+  View,
+  ActivityIndicator,
+  Text,
+  StyleSheet,
+  StyleProp,
+  ViewStyle,
+} from 'react-native';
 import { Colors } from '../../constants/colors';
+import { Spacing } from '../../constants/theme';
 
 export interface LoadingIndicatorProps {
   message?: string;
+  size?: 'small' | 'large';
+  color?: string;
+  style?: StyleProp<ViewStyle>;
+  testID?: string;
 }
 
-export const LoadingIndicator: React.FC<LoadingIndicatorProps> = ({ message }) => {
+export const LoadingIndicator: React.FC<LoadingIndicatorProps> = ({
+  message,
+  size = 'large',
+  color = Colors.primary,
+  style,
+  testID = 'loading-indicator',
+}) => {
   return (
-    <View style={styles.container}>
-      <ActivityIndicator size="large" color={Colors.primaryLight} />
+    <View style={[styles.container, style]} testID={testID}>
+      <ActivityIndicator size={size} color={color} />
       {message ? <Text style={styles.text}>{message}</Text> : null}
     </View>
   );
@@ -17,13 +35,15 @@ export const LoadingIndicator: React.FC<LoadingIndicatorProps> = ({ message }) =
 
 const styles = StyleSheet.create({
   container: {
-    paddingVertical: 30,
+    paddingVertical: Spacing.xl,
     alignItems: 'center',
     justifyContent: 'center',
   },
   text: {
-    marginTop: 10,
+    marginTop: Spacing.sm,
     fontSize: 13,
-    color: Colors.text.secondary,
+    fontWeight: '500',
+    color: Colors.text.muted,
+    textAlign: 'center',
   },
 });

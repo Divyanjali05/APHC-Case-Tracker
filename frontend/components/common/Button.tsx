@@ -4,10 +4,12 @@ import {
   Text,
   StyleSheet,
   ActivityIndicator,
+  StyleProp,
   ViewStyle,
   TextStyle,
 } from 'react-native';
 import { Colors } from '../../constants/colors';
+import { Radius, Spacing } from '../../constants/theme';
 
 export interface ButtonProps {
   title: string;
@@ -15,9 +17,10 @@ export interface ButtonProps {
   variant?: 'primary' | 'secondary' | 'outline' | 'danger';
   loading?: boolean;
   disabled?: boolean;
-  style?: ViewStyle;
-  textStyle?: TextStyle;
+  style?: StyleProp<ViewStyle>;
+  textStyle?: StyleProp<TextStyle>;
   testID?: string;
+  accessibilityLabel?: string;
 }
 
 export const Button: React.FC<ButtonProps> = ({
@@ -29,23 +32,34 @@ export const Button: React.FC<ButtonProps> = ({
   style,
   textStyle,
   testID = 'custom-button',
+  accessibilityLabel,
 }) => {
   const isInteractive = !loading && !disabled;
+
+  const getSpinnerColor = () => {
+    switch (variant) {
+      case 'outline':
+      case 'secondary':
+        return Colors.primary;
+      case 'primary':
+      case 'danger':
+      default:
+        return Colors.text.white;
+    }
+  };
 
   return (
     <TouchableOpacity
       accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel || title}
       accessibilityState={{ disabled: !isInteractive }}
       testID={testID}
-      activeOpacity={0.8}
+      activeOpacity={0.75}
       onPress={isInteractive ? onPress : undefined}
       style={[styles.base, styles[variant], !isInteractive && styles.disabled, style]}
     >
       {loading ? (
-        <ActivityIndicator
-          size="small"
-          color={variant === 'outline' ? Colors.primaryLight : Colors.text.white}
-        />
+        <ActivityIndicator size="small" color={getSpinnerColor()} />
       ) : (
         <Text
           style={[
@@ -63,9 +77,10 @@ export const Button: React.FC<ButtonProps> = ({
 
 const styles = StyleSheet.create({
   base: {
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    borderRadius: 12,
+    minHeight: 48,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.xl,
+    borderRadius: Radius.button,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
@@ -75,11 +90,13 @@ const styles = StyleSheet.create({
   },
   secondary: {
     backgroundColor: Colors.surfaceSubtle,
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
   outline: {
     backgroundColor: 'transparent',
     borderWidth: 1.5,
-    borderColor: Colors.primaryLight,
+    borderColor: Colors.primary,
   },
   danger: {
     backgroundColor: Colors.danger,
@@ -89,8 +106,8 @@ const styles = StyleSheet.create({
   },
   text: {
     fontSize: 15,
-    fontWeight: '700',
-    letterSpacing: 0.3,
+    fontWeight: '600',
+    letterSpacing: 0.2,
   },
   primaryText: {
     color: Colors.text.white,
@@ -99,7 +116,7 @@ const styles = StyleSheet.create({
     color: Colors.text.primary,
   },
   outlineText: {
-    color: Colors.primaryLight,
+    color: Colors.primary,
   },
   dangerText: {
     color: Colors.text.white,

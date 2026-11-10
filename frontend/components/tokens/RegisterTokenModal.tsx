@@ -11,6 +11,7 @@ import {
   Platform,
 } from 'react-native';
 import { Button } from '../common/Button';
+import { AppIcon } from '../common/AppIcon';
 import { Colors } from '../../constants/colors';
 import { CaseItem, CourtHallItem, CreateTokenAlertPayload } from '../../types';
 
@@ -148,8 +149,10 @@ export const RegisterTokenModal: React.FC<RegisterTokenModalProps> = ({
               onPress={onClose}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               testID="close-modal-button"
+              style={styles.closeBtn}
+              accessibilityLabel="Close modal"
             >
-              <Text style={styles.closeIcon}>✕</Text>
+              <AppIcon name="x" size={18} color={Colors.text.secondary} />
             </TouchableOpacity>
           </View>
 
@@ -179,10 +182,7 @@ export const RegisterTokenModal: React.FC<RegisterTokenModalProps> = ({
                       testID={`case-option-${c.id}`}
                     >
                       <Text
-                        style={[
-                          styles.pillText,
-                          isSelected && styles.pillTextSelected,
-                        ]}
+                        style={[styles.pillText, isSelected && styles.pillTextSelected]}
                       >
                         {label}
                       </Text>
@@ -214,10 +214,7 @@ export const RegisterTokenModal: React.FC<RegisterTokenModalProps> = ({
                       testID={`hall-option-${h.id}`}
                     >
                       <Text
-                        style={[
-                          styles.pillText,
-                          isSelected && styles.pillTextSelected,
-                        ]}
+                        style={[styles.pillText, isSelected && styles.pillTextSelected]}
                       >
                         Hall {h.hall_number}
                       </Text>
@@ -285,14 +282,21 @@ export const RegisterTokenModal: React.FC<RegisterTokenModalProps> = ({
                 onPress={() => setAlertOnApproach(!alertOnApproach)}
                 testID="approach-toggle"
               >
-                <Text
-                  style={[
-                    styles.toggleBtnText,
-                    alertOnApproach && styles.toggleBtnTextActive,
-                  ]}
-                >
-                  {alertOnApproach ? '✓ Approaching Alert ON' : '✗ Approaching Alert OFF'}
-                </Text>
+                <View style={styles.toggleInner}>
+                  <AppIcon
+                    name={alertOnApproach ? 'check-circle' : 'circle'}
+                    size={14}
+                    color={alertOnApproach ? Colors.success : Colors.text.muted}
+                  />
+                  <Text
+                    style={[
+                      styles.toggleBtnText,
+                      alertOnApproach && styles.toggleBtnTextActive,
+                    ]}
+                  >
+                    {alertOnApproach ? 'Approaching ON' : 'Approaching OFF'}
+                  </Text>
+                </View>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -300,19 +304,27 @@ export const RegisterTokenModal: React.FC<RegisterTokenModalProps> = ({
                 onPress={() => setAlertOnCalled(!alertOnCalled)}
                 testID="called-toggle"
               >
-                <Text
-                  style={[
-                    styles.toggleBtnText,
-                    alertOnCalled && styles.toggleBtnTextActive,
-                  ]}
-                >
-                  {alertOnCalled ? '✓ Called Alert ON' : '✗ Called Alert OFF'}
-                </Text>
+                <View style={styles.toggleInner}>
+                  <AppIcon
+                    name={alertOnCalled ? 'check-circle' : 'circle'}
+                    size={14}
+                    color={alertOnCalled ? Colors.success : Colors.text.muted}
+                  />
+                  <Text
+                    style={[
+                      styles.toggleBtnText,
+                      alertOnCalled && styles.toggleBtnTextActive,
+                    ]}
+                  >
+                    {alertOnCalled ? 'Called ON' : 'Called OFF'}
+                  </Text>
+                </View>
               </TouchableOpacity>
             </View>
 
             {/* Transparency Note */}
             <View style={styles.transparencyBox}>
+              <AppIcon name="info" size={16} color={Colors.gold} />
               <Text style={styles.transparencyText}>
                 APHC Compliance Notice: Official live token data feeds are used when
                 authorized. In testing/demo mode, deterministic simulation data is
@@ -347,7 +359,7 @@ export const RegisterTokenModal: React.FC<RegisterTokenModalProps> = ({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.7)',
+    backgroundColor: Colors.overlay,
     justifyContent: 'flex-end',
   },
   modalContent: {
@@ -364,22 +376,25 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   modalTitle: {
-    color: Colors.text.white,
+    color: Colors.text.primary,
     fontSize: 18,
-    fontWeight: '800',
-  },
-  closeIcon: {
-    color: Colors.text.muted,
-    fontSize: 20,
     fontWeight: '700',
+  },
+  closeBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: Colors.surfaceSubtle,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   formScroll: {
     marginBottom: 16,
   },
   errorBanner: {
-    backgroundColor: 'rgba(239, 68, 68, 0.2)',
+    backgroundColor: Colors.dangerSurface,
     borderWidth: 1,
-    borderColor: Colors.danger,
+    borderColor: Colors.dangerBorder,
     borderRadius: 8,
     padding: 10,
     marginBottom: 12,
@@ -417,7 +432,7 @@ const styles = StyleSheet.create({
   },
   pillSelected: {
     backgroundColor: Colors.primary,
-    borderColor: Colors.primaryLight,
+    borderColor: Colors.primary,
   },
   pillText: {
     color: Colors.text.secondary,
@@ -433,7 +448,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
     borderRadius: 10,
-    color: Colors.text.white,
+    color: Colors.text.primary,
     fontSize: 14,
     paddingHorizontal: 14,
     paddingVertical: 10,
@@ -450,17 +465,22 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
     borderRadius: 8,
-    paddingVertical: 8,
+    paddingVertical: 10,
     paddingHorizontal: 10,
     alignItems: 'center',
   },
   toggleBtnActive: {
-    backgroundColor: 'rgba(16, 185, 129, 0.15)',
-    borderColor: Colors.success,
+    backgroundColor: Colors.successSurface,
+    borderColor: Colors.successBorder,
+  },
+  toggleInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   toggleBtnText: {
-    color: Colors.text.muted,
-    fontSize: 11,
+    color: Colors.text.secondary,
+    fontSize: 12,
     fontWeight: '600',
   },
   toggleBtnTextActive: {
@@ -468,18 +488,22 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   transparencyBox: {
-    backgroundColor: 'rgba(217, 119, 6, 0.1)',
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    backgroundColor: Colors.goldSurface,
     borderWidth: 1,
-    borderColor: Colors.gold,
+    borderColor: Colors.goldBorder,
     borderRadius: 8,
     padding: 10,
     marginTop: 8,
     marginBottom: 10,
   },
   transparencyText: {
-    color: Colors.gold,
-    fontSize: 11,
-    lineHeight: 16,
+    flex: 1,
+    color: Colors.text.primary,
+    fontSize: 12,
+    lineHeight: 17,
   },
   modalFooter: {
     flexDirection: 'row',

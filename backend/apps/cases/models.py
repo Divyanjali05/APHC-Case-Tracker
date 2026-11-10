@@ -248,3 +248,48 @@ class CaseNote(models.Model):
 
     def __str__(self):
         return f"Note: {self.title} (Advocate: {self.advocate_id}, Case: {self.case_id})"
+
+
+class CaseAssignmentHistory(models.Model):
+    """Audit history tracking administrative assignment and reassignment of cases to advocates."""
+
+    ACTION_ASSIGNED = "ASSIGNED"
+    ACTION_UNASSIGNED = "UNASSIGNED"
+
+    ACTION_CHOICES = (
+        (ACTION_ASSIGNED, "Assigned"),
+        (ACTION_UNASSIGNED, "Unassigned"),
+    )
+
+    case = models.ForeignKey(
+        Case,
+        on_delete=models.CASCADE,
+        related_name="assignment_history",
+    )
+    advocate = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="case_assignments",
+    )
+    assigned_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="assigned_cases_log",
+    )
+    action = models.CharField(max_length=20, choices=ACTION_CHOICES, db_index=True)
+    notes = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Case Assignment History"
+        verbose_name_plural = "Case Assignment Histories"
+        indexes = [
+            models.Index(fields=["case", "-created_at"]),
+            models.Index(fields=["advocate", "-created_at"]),
+        ]
+
+    def __str__(self):
+        return f"{self.case} {self.action} {self.advocate_id}"

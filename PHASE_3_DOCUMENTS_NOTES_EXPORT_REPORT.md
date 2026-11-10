@@ -1,10 +1,11 @@
 # PHASE 3 — CASE DOCUMENTS, PRIVATE NOTES & EXPORT SYSTEM
+
 ## IMPLEMENTATION & SECURITY AUDIT REPORT
 
-**Project:** Andhra Pradesh High Court Lawyer Mobile Application  
-**Workspace:** `C:\Users\divya\OneDrive\Documents\Lawyerr`  
-**Current Branch:** `feature/phase-4-to-8-complete-implementation`  
-**Phase Status:** **PHASE 3 COMPLETE — 100% VERIFIED**  
+**Project:** Andhra Pradesh High Court Lawyer Mobile Application
+**Workspace:** `C:\Users\divya\OneDrive\Documents\Lawyerr`
+**Current Branch:** `feature/phase-4-to-8-complete-implementation`
+**Phase Status:** **PHASE 3 COMPLETE — 100% VERIFIED**
 **Safety Protocol:** Awaiting explicit user approval before Phase 4.
 
 ---
@@ -48,35 +49,40 @@ All features are fully verified with end-to-end multi-tenant isolation, magic by
 ## 2. SECURITY CONTROLS & ARCHITECTURE
 
 ### 2.1 Secure Case Document Storage (`SecureDocumentStorage`)
-* **Physical Isolation:** Documents are saved to `protected_media/case_documents/` (`SECURE_DOCUMENT_ROOT`), strictly detached from Django's public static or media roots (`settings.MEDIA_ROOT`, `settings.STATIC_ROOT`).
-* **Path Traversal & Enumeration Defense:** File names are sanitized with `get_valid_filename` and prefixed with high-entropy UUIDv4 hex tokens (`{uuid4}_{clean_filename}`) placed in case-specific folders (`case_{case_id}/`).
-* **Prohibited Public URLs:** Invoking `.url` on `SecureDocumentStorage` raises `NotImplementedError`. Files can only be downloaded via authenticated streaming endpoints.
-* **Controlled Streaming:** `CaseDocumentDownloadView` streams files via `FileResponse(as_attachment=True)` with verified `Content-Disposition`, MIME type, and exact `Content-Length`.
+
+- **Physical Isolation:** Documents are saved to `protected_media/case_documents/` (`SECURE_DOCUMENT_ROOT`), strictly detached from Django's public static or media roots (`settings.MEDIA_ROOT`, `settings.STATIC_ROOT`).
+- **Path Traversal & Enumeration Defense:** File names are sanitized with `get_valid_filename` and prefixed with high-entropy UUIDv4 hex tokens (`{uuid4}_{clean_filename}`) placed in case-specific folders (`case_{case_id}/`).
+- **Prohibited Public URLs:** Invoking `.url` on `SecureDocumentStorage` raises `NotImplementedError`. Files can only be downloaded via authenticated streaming endpoints.
+- **Controlled Streaming:** `CaseDocumentDownloadView` streams files via `FileResponse(as_attachment=True)` with verified `Content-Disposition`, MIME type, and exact `Content-Length`.
 
 ### 2.2 Magic Byte Header Inspection (`validate_case_document_upload`)
-* **Strict Format Allowlist:** Only `.pdf`, `.docx`, `.jpg`, `.jpeg`, `.png` are accepted.
-* **Signature Verification:** The first 2048 bytes of every uploaded file are inspected against official binary magic byte signatures:
+
+- **Strict Format Allowlist:** Only `.pdf`, `.docx`, `.jpg`, `.jpeg`, `.png` are accepted.
+- **Signature Verification:** The first 2048 bytes of every uploaded file are inspected against official binary magic byte signatures:
   - PDF: `%PDF-`
   - PNG: `\x89PNG\r\n\x1a\n`
   - JPEG: `\xff\xd8\xff`
   - DOCX: `PK\x03\x04` (ZIP container header)
-* **Executable Signature Blocking:** Binary signatures for Windows PE/EXE (`MZ`), Linux ELF (`\x7fELF`), and Unix scripts (`#!/bin`, `#!/usr`) are detected and rejected with a 400 Bad Request error.
-* **Size Enforcement:** Configurable via `MAX_UPLOAD_SIZE_BYTES` (default: 10 MB).
+- **Executable Signature Blocking:** Binary signatures for Windows PE/EXE (`MZ`), Linux ELF (`\x7fELF`), and Unix scripts (`#!/bin`, `#!/usr`) are detected and rejected with a 400 Bad Request error.
+- **Size Enforcement:** Configurable via `MAX_UPLOAD_SIZE_BYTES` (default: 10 MB).
 
 ### 2.3 Strict Multi-Tenant Isolation for Private Notes (`CaseNote`)
-* Every note is strictly scoped by `advocate = request.user`.
-* Even if multiple advocates track the same High Court case docket (e.g. Petitioner Advocate vs Respondent Advocate), neither advocate can list, view, search, modify, or delete the other advocate's private notes. Cross-tenant queries return HTTP 404 Not Found.
+
+- Every note is strictly scoped by `advocate = request.user`.
+- Even if multiple advocates track the same High Court case docket (e.g. Petitioner Advocate vs Respondent Advocate), neither advocate can list, view, search, modify, or delete the other advocate's private notes. Cross-tenant queries return HTTP 404 Not Found.
 
 ### 2.4 CWE-1236: CSV Formula Injection Mitigation
-* `sanitize_csv_cell` neutralizes formula command execution in Excel/Calc by prepending a single quote `'` whenever a cell starts with dangerous prefixes:
+
+- `sanitize_csv_cell` neutralizes formula command execution in Excel/Calc by prepending a single quote `'` whenever a cell starts with dangerous prefixes:
   `=`, `+`, `-`, `@`, `\t`, `\r`.
-* Tested against malicious payloads such as `=cmd|' /C calc'!A0` and `+SUM(1+1)*cmd`.
+- Tested against malicious payloads such as `=cmd|' /C calc'!A0` and `+SUM(1+1)*cmd`.
 
 ---
 
 ## 3. BACKEND IMPLEMENTATION
 
 ### 3.1 Database Models (`apps/cases/models.py`)
+
 1. **`CaseDocument`**:
    - Fields: `case`, `uploaded_by`, `title`, `document_type` (`PETITION`, `COUNTER_AFFIDAVIT`, `REJOINDER`, `JUDGMENT`, `COURT_ORDER`, `WRITTEN_SUBMISSIONS`, `EVIDENCE`, `SUPPORTING_DOCUMENTS`, `OTHER`), `description`, `original_filename`, `file_size`, `mime_type`, `file` (backed by `secure_document_storage`), `created_at`, `updated_at`.
    - Indexed on `[case, -created_at]`, `[uploaded_by, -created_at]`, `[case, document_type]`.
@@ -87,30 +93,33 @@ All features are fully verified with end-to-end multi-tenant isolation, magic by
 3. **Migration:** `0006_casedocument_casenote.py` applied cleanly to the database.
 
 ### 3.2 Export Services (`apps/cases/export_service.py`)
-* **`CasePdfExportService.generate_case_summary_pdf(case, user)`**:
+
+- **`CasePdfExportService.generate_case_summary_pdf(case, user)`**:
   - Uses ReportLab vector engine (`SimpleDocTemplate`, `Table`, `ParagraphStyle`, `HRFlowable`).
   - Renders official APHC header, Court Hall, Bench, Stage, Status, Party block, complete hearing history table, judgment pronouncements, and an indexed case document register.
-* **`CaseCsvExportService.generate_case_list_csv(cases_queryset)`**:
+- **`CaseCsvExportService.generate_case_list_csv(cases_queryset)`**:
   - Streams sanitized CSV with headers, case numbers, stages, halls, next dates, and formula injection mitigation.
 
 ### 3.3 REST Endpoints (`apps/cases/urls.py` & `apps/cases/views.py`)
-| Endpoint | Method | Description | Security |
-| :--- | :---: | :--- | :--- |
-| `/api/cases/export/csv/` | `GET` | Export filtered case list as sanitized CSV | Authenticated, user-scoped |
-| `/api/cases/{case_id}/export/pdf/` | `GET` | Export comprehensive docket summary as PDF | Authenticated, tracked check |
-| `/api/cases/{case_id}/documents/` | `GET` | List documents (with `?category=` filter) | Authenticated, tracked check |
-| `/api/cases/{case_id}/documents/` | `POST` | Secure document upload with magic byte check | Authenticated, tracked check |
-| `/api/cases/{case_id}/documents/{pk}/` | `GET`, `PATCH`, `DELETE` | Retrieve, update metadata, or delete document | Authenticated, tracked check |
-| `/api/cases/{case_id}/documents/{pk}/download/` | `GET` | Authenticated file streaming download | Authenticated, tracked check |
-| `/api/cases/{case_id}/notes/` | `GET` | List advocate notes (with `?search=`) | Strictly `advocate=request.user` |
-| `/api/cases/{case_id}/notes/` | `POST` | Create advocate preparation note | Strictly `advocate=request.user` |
-| `/api/cases/{case_id}/notes/{pk}/` | `GET`, `PATCH`, `PUT`, `DELETE` | Note detail, update, delete | Strictly `advocate=request.user` |
+
+| Endpoint                                        |             Method              | Description                                   | Security                         |
+| :---------------------------------------------- | :-----------------------------: | :-------------------------------------------- | :------------------------------- |
+| `/api/cases/export/csv/`                        |              `GET`              | Export filtered case list as sanitized CSV    | Authenticated, user-scoped       |
+| `/api/cases/{case_id}/export/pdf/`              |              `GET`              | Export comprehensive docket summary as PDF    | Authenticated, tracked check     |
+| `/api/cases/{case_id}/documents/`               |              `GET`              | List documents (with `?category=` filter)     | Authenticated, tracked check     |
+| `/api/cases/{case_id}/documents/`               |             `POST`              | Secure document upload with magic byte check  | Authenticated, tracked check     |
+| `/api/cases/{case_id}/documents/{pk}/`          |    `GET`, `PATCH`, `DELETE`     | Retrieve, update metadata, or delete document | Authenticated, tracked check     |
+| `/api/cases/{case_id}/documents/{pk}/download/` |              `GET`              | Authenticated file streaming download         | Authenticated, tracked check     |
+| `/api/cases/{case_id}/notes/`                   |              `GET`              | List advocate notes (with `?search=`)         | Strictly `advocate=request.user` |
+| `/api/cases/{case_id}/notes/`                   |             `POST`              | Create advocate preparation note              | Strictly `advocate=request.user` |
+| `/api/cases/{case_id}/notes/{pk}/`              | `GET`, `PATCH`, `PUT`, `DELETE` | Note detail, update, delete                   | Strictly `advocate=request.user` |
 
 ---
 
 ## 4. MOBILE FRONTEND IMPLEMENTATION
 
 ### 4.1 Modular React Native Components
+
 1. **`CaseDocumentsSection.tsx`** (`frontend/components/cases/CaseDocumentsSection.tsx`):
    - Category filter pills (`All`, `Petition`, `Counter`, `Order`, `Judgment`, `Submissions`, `Evidence`, `Other`).
    - Dynamic document list with file size formatters, upload date, and download/delete controls.
@@ -122,16 +131,18 @@ All features are fully verified with end-to-end multi-tenant isolation, magic by
    - Modal for creating and editing notes with switch for "Pin to Top".
 
 ### 4.2 Screen Enhancements
-* **`frontend/app/cases/[id].tsx`**:
+
+- **`frontend/app/cases/[id].tsx`**:
   - Added 3-way Segmented Navigation Tab Bar: `Overview`, `Documents`, and `Private Notes`.
   - Added "Export Docket PDF" action in the banner header with loading indicator.
   - Retained all existing features: Voice summary audio playback, court status card, hearing reschedule modal, and audit history timeline.
-* **`frontend/app/(tabs)/cases.tsx`**:
+- **`frontend/app/(tabs)/cases.tsx`**:
   - Added "Export CSV" button in the case list header bar.
   - Automatically respects active filters and search terms.
 
 ### 4.3 Multilingual Translations
-* Complete localized strings added to `en.json`, `te.json`, and `hi.json` for:
+
+- Complete localized strings added to `en.json`, `te.json`, and `hi.json` for:
   - Document categories (`PETITION`, `COUNTER_AFFIDAVIT`, `COURT_ORDER`, etc.)
   - Document upload, download, and delete prompts
   - Note creation, editing, pinning, and deletion
@@ -202,4 +213,3 @@ Ruff Python Linter     : 0 errors (All checks passed!)
 - [x] Full multilingual support (English, Telugu, Hindi).
 - [x] Zero regressions across 303 backend tests and 226 frontend tests.
 - [x] STOP after Phase 3 and await explicit user approval.
-

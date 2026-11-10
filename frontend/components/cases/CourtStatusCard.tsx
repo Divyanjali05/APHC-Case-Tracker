@@ -9,6 +9,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import { Card } from '../common/Card';
 import { Badge, BadgeProps } from '../common/Badge';
+import { AppIcon } from '../common/AppIcon';
 import { Colors } from '../../constants/colors';
 import { CaseCourtStatusSummary, NormalizedCourtStatusType } from '../../types';
 import { formatDate, formatTime } from '../../utils/formatters';
@@ -88,7 +89,7 @@ export const CourtStatusCard: React.FC<CourtStatusCardProps> = ({
       {/* Mock Provider Warning Banner */}
       {listing?.is_mock && (
         <View style={styles.mockBanner} testID="mock-adapter-banner">
-          <Text style={styles.mockBannerIcon}>⚠️</Text>
+          <AppIcon name="alert-triangle" size={15} color={Colors.gold} />
           <Text style={styles.mockBannerText}>
             {t(
               'courtStatus.mockNotice',
@@ -233,7 +234,9 @@ export const CourtStatusCard: React.FC<CourtStatusCardProps> = ({
             </View>
           ) : (
             <View style={styles.emptyContainer} testID="court-status-empty">
-              <Text style={styles.emptyIcon}>📋</Text>
+              <View style={styles.emptyIconCircle}>
+                <AppIcon name="clipboard-list" size={24} color={Colors.text.muted} />
+              </View>
               <Text style={styles.emptyTitle}>
                 {t('courtStatus.noListing', 'No Active Court Listing')}
               </Text>
@@ -275,7 +278,9 @@ export const CourtStatusCard: React.FC<CourtStatusCardProps> = ({
               style={styles.buttonSpinner}
             />
           ) : (
-            <Text style={styles.syncButtonIcon}>🔄</Text>
+            <View style={styles.syncIconWrap}>
+              <AppIcon name="refresh" size={15} color="#FFFFFF" />
+            </View>
           )}
           <Text style={styles.syncButtonText}>
             {isSyncing
@@ -317,24 +322,21 @@ const styles = StyleSheet.create({
   mockBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(245, 158, 11, 0.12)',
-    borderColor: 'rgba(245, 158, 11, 0.4)',
+    gap: 8,
+    backgroundColor: Colors.goldSurface,
+    borderColor: Colors.goldBorder,
     borderWidth: 1,
-    borderRadius: 6,
-    paddingVertical: 6,
+    borderRadius: 8,
+    paddingVertical: 8,
     paddingHorizontal: 10,
     marginBottom: 12,
   },
-  mockBannerIcon: {
-    fontSize: 14,
-    marginRight: 6,
-  },
   mockBannerText: {
     flex: 1,
-    fontSize: 11,
-    color: '#FDE68A',
+    fontSize: 12,
+    color: Colors.text.primary,
     fontWeight: '500',
-    lineHeight: 15,
+    lineHeight: 17,
   },
   loadingContainer: {
     paddingVertical: 20,
@@ -362,11 +364,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: 'rgba(37, 99, 235, 0.15)',
-    borderColor: 'rgba(59, 130, 246, 0.4)',
+    backgroundColor: Colors.surfaceBlue,
+    borderColor: Colors.infoBorder,
     borderWidth: 1,
-    borderRadius: 8,
-    paddingVertical: 10,
+    borderRadius: 10,
+    paddingVertical: 12,
     paddingHorizontal: 14,
     marginBottom: 12,
   },
@@ -374,28 +376,28 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   tokenLabel: {
-    fontSize: 11,
-    color: '#93C5FD',
+    fontSize: 12,
+    color: Colors.primaryLight,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   tokenValue: {
     fontSize: 22,
     fontWeight: '800',
-    color: '#FFFFFF',
+    color: Colors.primary,
     marginTop: 2,
-    letterSpacing: 1,
+    letterSpacing: 0.8,
   },
   itemRight: {
     alignItems: 'flex-end',
   },
   itemLabel: {
-    fontSize: 11,
-    color: '#93C5FD',
+    fontSize: 12,
+    color: Colors.primaryLight,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   itemValue: {
     fontSize: 18,
@@ -408,13 +410,15 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     padding: 10,
     marginBottom: 12,
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
   gridRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingVertical: 4,
+    paddingVertical: 5,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(255, 255, 255, 0.05)',
+    borderBottomColor: Colors.border,
   },
   gridLabel: {
     fontSize: 12,
@@ -429,10 +433,10 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
   highlightValue: {
-    color: Colors.gold,
+    color: Colors.primary,
   },
   gridValueMuted: {
-    fontSize: 11,
+    fontSize: 12,
     color: Colors.text.muted,
     flex: 1.4,
     textAlign: 'right',
@@ -442,9 +446,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  emptyIcon: {
-    fontSize: 28,
-    marginBottom: 8,
+  emptyIconCircle: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: Colors.surfaceSubtle,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 10,
   },
   emptyTitle: {
     fontSize: 14,
@@ -459,29 +468,31 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   feedbackSuccess: {
-    backgroundColor: 'rgba(16, 185, 129, 0.15)',
-    borderColor: 'rgba(16, 185, 129, 0.3)',
+    backgroundColor: Colors.successSurface,
+    borderColor: Colors.successBorder,
     borderWidth: 1,
-    borderRadius: 6,
+    borderRadius: 8,
     padding: 8,
     marginBottom: 10,
   },
   feedbackSuccessText: {
     fontSize: 12,
-    color: '#6EE7B7',
+    color: Colors.success,
+    fontWeight: '600',
     textAlign: 'center',
   },
   feedbackError: {
-    backgroundColor: 'rgba(239, 68, 68, 0.15)',
-    borderColor: 'rgba(239, 68, 68, 0.3)',
+    backgroundColor: Colors.dangerSurface,
+    borderColor: Colors.dangerBorder,
     borderWidth: 1,
-    borderRadius: 6,
+    borderRadius: 8,
     padding: 8,
     marginBottom: 10,
   },
   feedbackErrorText: {
     fontSize: 12,
-    color: '#FCA5A5',
+    color: Colors.danger,
+    fontWeight: '600',
     textAlign: 'center',
   },
   syncButton: {
@@ -489,15 +500,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: Colors.primary,
-    paddingVertical: 10,
-    borderRadius: 6,
+    paddingVertical: 11,
+    borderRadius: 8,
     marginTop: 4,
   },
   syncButtonDisabled: {
     opacity: 0.65,
   },
-  syncButtonIcon: {
-    fontSize: 14,
+  syncIconWrap: {
     marginRight: 6,
   },
   buttonSpinner: {

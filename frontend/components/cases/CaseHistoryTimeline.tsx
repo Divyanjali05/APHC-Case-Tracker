@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { Badge } from '../common/Badge';
+import { AppIcon, AppIconName } from '../common/AppIcon';
 import { Colors } from '../../constants/colors';
 import { CaseHistoryItem } from '../../types';
 import { formatDate, formatTime } from '../../utils/formatters';
@@ -52,16 +53,16 @@ export const CaseHistoryTimeline: React.FC<CaseHistoryTimelineProps> = ({
     return history;
   }, [history, selectedCategory]);
 
-  const getEventIcon = (eventType: string): string => {
+  const getEventIcon = (eventType: string): AppIconName => {
     const type = eventType.toUpperCase();
-    if (type.includes('RESCHEDULE')) return '🔄';
-    if (type.includes('HEARING')) return '📅';
-    if (type.includes('JUDGMENT')) return '📜';
-    if (type.includes('DOCUMENT')) return '📎';
-    if (type.includes('STAGE')) return '⚡';
-    if (type.includes('SYNC')) return '🌐';
-    if (type.includes('CREATED')) return '📋';
-    return '⚖️';
+    if (type.includes('RESCHEDULE')) return 'refresh';
+    if (type.includes('HEARING')) return 'calendar';
+    if (type.includes('JUDGMENT')) return 'gavel';
+    if (type.includes('DOCUMENT')) return 'file-text';
+    if (type.includes('STAGE')) return 'activity';
+    if (type.includes('SYNC')) return 'globe';
+    if (type.includes('CREATED')) return 'clipboard-list';
+    return 'scale';
   };
 
   const getEventBadgeVariant = (
@@ -193,7 +194,11 @@ export const CaseHistoryTimeline: React.FC<CaseHistoryTimelineProps> = ({
                 {/* Left Column: Icon node + connecting line */}
                 <View style={styles.trackColumn}>
                   <View style={styles.iconNode}>
-                    <Text style={styles.nodeEmoji}>{getEventIcon(item.event_type)}</Text>
+                    <AppIcon
+                      name={getEventIcon(item.event_type)}
+                      size={15}
+                      color={Colors.primary}
+                    />
                   </View>
                   {!isLast && <View style={styles.trackLine} />}
                 </View>
@@ -244,7 +249,11 @@ export const CaseHistoryTimeline: React.FC<CaseHistoryTimelineProps> = ({
                             </View>
                           ) : null}
                           {item.old_value && item.new_value ? (
-                            <Text style={styles.diffArrow}>➔</Text>
+                            <AppIcon
+                              name="arrow-right"
+                              size={12}
+                              color={Colors.text.muted}
+                            />
                           ) : null}
                           {item.new_value ? (
                             <View style={styles.diffPillNew}>
@@ -324,7 +333,7 @@ const styles = StyleSheet.create({
   },
   filterChipActive: {
     backgroundColor: Colors.primary,
-    borderColor: Colors.primaryLight,
+    borderColor: Colors.primary,
   },
   filterChipText: {
     color: Colors.text.secondary,
@@ -393,15 +402,12 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: Colors.surfaceSubtle,
-    borderWidth: 2,
-    borderColor: Colors.border,
+    backgroundColor: Colors.surfaceBlue,
+    borderWidth: 1.5,
+    borderColor: Colors.infoBorder,
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 2,
-  },
-  nodeEmoji: {
-    fontSize: 14,
   },
   trackLine: {
     position: 'absolute',
@@ -442,16 +448,18 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   diffBox: {
-    backgroundColor: '#0B132B',
-    borderRadius: 6,
-    padding: 8,
+    backgroundColor: Colors.surface,
+    borderRadius: 8,
+    padding: 10,
     marginBottom: 8,
+    borderWidth: 1,
+    borderColor: Colors.border,
     borderLeftWidth: 3,
     borderLeftColor: Colors.gold,
   },
   diffField: {
     color: Colors.text.muted,
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '600',
     marginBottom: 4,
   },
@@ -464,47 +472,43 @@ const styles = StyleSheet.create({
   diffPillOld: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+    backgroundColor: Colors.dangerSurface,
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 4,
     borderWidth: 1,
-    borderColor: 'rgba(239, 68, 68, 0.3)',
+    borderColor: Colors.dangerBorder,
   },
   diffLabelOld: {
-    color: '#F87171',
-    fontSize: 10,
+    color: Colors.danger,
+    fontSize: 12,
     fontWeight: '700',
     marginRight: 4,
   },
   diffValOld: {
-    color: '#FCA5A5',
-    fontSize: 11,
-    textDecorationLine: 'line-through',
-  },
-  diffArrow: {
-    color: Colors.text.muted,
+    color: Colors.danger,
     fontSize: 12,
+    textDecorationLine: 'line-through',
   },
   diffPillNew: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    backgroundColor: Colors.successSurface,
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 4,
     borderWidth: 1,
-    borderColor: 'rgba(16, 185, 129, 0.3)',
+    borderColor: Colors.successBorder,
   },
   diffLabelNew: {
-    color: '#34D399',
-    fontSize: 10,
+    color: Colors.success,
+    fontSize: 12,
     fontWeight: '700',
     marginRight: 4,
   },
   diffValNew: {
-    color: '#6EE7B7',
-    fontSize: 11,
+    color: Colors.success,
+    fontSize: 12,
     fontWeight: '600',
   },
   cardFooter: {
@@ -514,7 +518,7 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     paddingTop: 6,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(51, 65, 85, 0.5)',
+    borderTopColor: Colors.border,
     gap: 6,
   },
   timestampRow: {
@@ -523,11 +527,11 @@ const styles = StyleSheet.create({
   },
   dateText: {
     color: Colors.text.muted,
-    fontSize: 11,
+    fontSize: 12,
   },
   timeText: {
     color: Colors.text.muted,
-    fontSize: 11,
+    fontSize: 12,
   },
   metaRow: {
     flexDirection: 'row',
@@ -536,7 +540,7 @@ const styles = StyleSheet.create({
   },
   userText: {
     color: Colors.text.secondary,
-    fontSize: 11,
-    maxWidth: 120,
+    fontSize: 12,
+    maxWidth: 140,
   },
 });

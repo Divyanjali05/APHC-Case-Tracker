@@ -77,8 +77,17 @@ export function useUpdatePersonalReminder() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ id, data }: { id: number; data: UpdatePersonalReminderPayload }) => {
-      const response = await apiClient.patch(ENDPOINTS.CALENDAR.REMINDER_DETAIL(id), data);
+    mutationFn: async ({
+      id,
+      data,
+    }: {
+      id: number;
+      data: UpdatePersonalReminderPayload;
+    }) => {
+      const response = await apiClient.patch(
+        ENDPOINTS.CALENDAR.REMINDER_DETAIL(id),
+        data
+      );
       return response.data;
     },
     onSuccess: () => {
@@ -138,9 +147,11 @@ export function useTriggerCalendarSync() {
 
   return useMutation({
     mutationFn: async () => {
-      const response = await apiClient.post<{ status: string; message: string; synced_count: number }>(
-        ENDPOINTS.CALENDAR.SYNC_TRIGGER
-      );
+      const response = await apiClient.post<{
+        status: string;
+        message: string;
+        synced_count: number;
+      }>(ENDPOINTS.CALENDAR.SYNC_TRIGGER);
       return response.data;
     },
     onSuccess: () => {
@@ -166,4 +177,3 @@ export function useDisconnectCalendarSync() {
     },
   });
 }
-

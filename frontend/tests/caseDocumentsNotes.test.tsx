@@ -273,7 +273,10 @@ describe('Phase 3: Case Documents & Private Notes Frontend Components', () => {
       fireEvent.press(screen.getByTestId('add-note-button'));
 
       // Fill in note form
-      fireEvent.changeText(screen.getByTestId('note-title-input'), 'Cross-Examination Prep');
+      fireEvent.changeText(
+        screen.getByTestId('note-title-input'),
+        'Cross-Examination Prep'
+      );
       fireEvent.changeText(
         screen.getByTestId('note-content-input'),
         'Questions regarding survey report.'
@@ -320,4 +323,3 @@ describe('Phase 3: Case Documents & Private Notes Frontend Components', () => {
     });
   });
 });
-

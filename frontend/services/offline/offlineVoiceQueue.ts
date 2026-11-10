@@ -50,7 +50,7 @@ export const offlineVoiceQueue = {
    */
   async getPendingQueue(userKey: string): Promise<OfflineVoiceQueueItem[]> {
     const queue = await this.getQueue(userKey);
-    return queue.filter((item) => item.status === 'PENDING' || item.status === 'FAILED');
+    return queue.filter(item => item.status === 'PENDING' || item.status === 'FAILED');
   },
 
   /**
@@ -68,7 +68,7 @@ export const offlineVoiceQueue = {
    */
   async removeFromQueue(userKey: string, id: string): Promise<void> {
     const queue = await this.getQueue(userKey);
-    const updated = queue.filter((item) => item.id !== id);
+    const updated = queue.filter(item => item.id !== id);
     await this.saveQueue(userKey, updated);
   },
 
@@ -115,4 +115,3 @@ export const offlineVoiceQueue = {
     return { synced, failed };
   },
 };
-

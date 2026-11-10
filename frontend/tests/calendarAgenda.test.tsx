@@ -265,17 +265,12 @@ describe('Calendar & Daily Agenda System', () => {
   // 4. DayView hearings list
   it('renders hearing appearance card with case number, hall and time', () => {
     const onSelectEvent = jest.fn();
-    render(
-      <CalendarDayView
-        agenda={mockAgendaData}
-        onSelectEvent={onSelectEvent}
-      />
-    );
+    render(<CalendarDayView agenda={mockAgendaData} onSelectEvent={onSelectEvent} />);
 
     expect(screen.getByTestId('hearing-card-101')).toBeTruthy();
     expect(screen.getAllByText('WP 1234/2024')[0]).toBeTruthy();
     expect(screen.getByText('K. Srinivas v. State of Andhra Pradesh')).toBeTruthy();
-    expect(screen.getByText('🕒 10:30:00')).toBeTruthy();
+    expect(screen.getByText('10:30:00')).toBeTruthy();
 
     fireEvent.press(screen.getByTestId('hearing-card-101'));
     expect(onSelectEvent).toHaveBeenCalledWith(mockHearing);
@@ -284,12 +279,7 @@ describe('Calendar & Daily Agenda System', () => {
   // 5. DayView compliance deadlines
   it('renders compliance deadline card with warning border', () => {
     const onSelectEvent = jest.fn();
-    render(
-      <CalendarDayView
-        agenda={mockAgendaData}
-        onSelectEvent={onSelectEvent}
-      />
-    );
+    render(<CalendarDayView agenda={mockAgendaData} onSelectEvent={onSelectEvent} />);
 
     expect(screen.getByTestId('deadline-card-202')).toBeTruthy();
     expect(screen.getByText('File Counter Affidavit')).toBeTruthy();
@@ -315,19 +305,14 @@ describe('Calendar & Daily Agenda System', () => {
     expect(screen.getByText('Review citations for interim prayer')).toBeTruthy();
 
     // Toggle completion button
-    const toggleBtn = screen.getByText('⚪');
+    const toggleBtn = screen.getByTestId('reminder-toggle-201');
     fireEvent.press(toggleBtn);
     expect(onToggleComplete).toHaveBeenCalledWith(mockReminder);
   });
 
   // 7. DayView empty state
   it('renders empty state when no events exist for the day', () => {
-    render(
-      <CalendarDayView
-        agenda={mockEmptyAgendaData}
-        onSelectEvent={jest.fn()}
-      />
-    );
+    render(<CalendarDayView agenda={mockEmptyAgendaData} onSelectEvent={jest.fn()} />);
 
     expect(screen.getByTestId('day-view-empty')).toBeTruthy();
     expect(screen.getByText('No events scheduled for this day')).toBeTruthy();
@@ -392,13 +377,7 @@ describe('Calendar & Daily Agenda System', () => {
   // 11. EventDetailModal hearing details & case navigation
   it('displays hearing appearance details and navigates to case', () => {
     const onClose = jest.fn();
-    render(
-      <EventDetailModal
-        visible={true}
-        event={mockHearing}
-        onClose={onClose}
-      />
-    );
+    render(<EventDetailModal visible={true} event={mockHearing} onClose={onClose} />);
 
     expect(screen.getByTestId('event-detail-modal')).toBeTruthy();
     expect(screen.getByText('Hearing: WP 1234/2024')).toBeTruthy();
@@ -412,13 +391,7 @@ describe('Calendar & Daily Agenda System', () => {
 
   // 12. EventDetailModal reminder details
   it('displays reminder details in detail modal', () => {
-    render(
-      <EventDetailModal
-        visible={true}
-        event={mockReminder}
-        onClose={jest.fn()}
-      />
-    );
+    render(<EventDetailModal visible={true} event={mockReminder} onClose={jest.fn()} />);
 
     expect(screen.getByText('Prepare Arguments Note')).toBeTruthy();
     expect(screen.getByText('Review citations for interim prayer')).toBeTruthy();
@@ -427,13 +400,7 @@ describe('Calendar & Daily Agenda System', () => {
 
   // 13. EventDetailModal token details
   it('displays court token alert details in modal', () => {
-    render(
-      <EventDetailModal
-        visible={true}
-        event={mockToken}
-        onClose={jest.fn()}
-      />
-    );
+    render(<EventDetailModal visible={true} event={mockToken} onClose={jest.fn()} />);
 
     expect(screen.getByText('#45')).toBeTruthy();
     expect(screen.getByText('Hall 4')).toBeTruthy();
@@ -472,15 +439,9 @@ describe('Calendar & Daily Agenda System', () => {
       />
     );
 
-    fireEvent.changeText(
-      screen.getByTestId('reminder-title-input'),
-      'Submit Rejoinder'
-    );
+    fireEvent.changeText(screen.getByTestId('reminder-title-input'), 'Submit Rejoinder');
     fireEvent.press(screen.getByTestId('reminder-type-filing'));
-    fireEvent.changeText(
-      screen.getByTestId('reminder-case-id-input'),
-      '1'
-    );
+    fireEvent.changeText(screen.getByTestId('reminder-case-id-input'), '1');
 
     fireEvent.press(screen.getByTestId('save-reminder-btn'));
 

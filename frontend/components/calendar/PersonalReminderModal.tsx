@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { Colors } from '../../constants/colors';
+import { AppIcon } from '../common/AppIcon';
 import { Button } from '../common/Button';
 import { CreatePersonalReminderPayload } from '../../types';
 
@@ -32,7 +33,9 @@ export const PersonalReminderModal: React.FC<PersonalReminderModalProps> = ({
   const [title, setTitle] = useState('');
   const [date, setDate] = useState(selectedDate);
   const [time, setTime] = useState('10:30');
-  const [reminderType, setReminderType] = useState<'GENERAL' | 'FILING' | 'BATTA'>('GENERAL');
+  const [reminderType, setReminderType] = useState<'GENERAL' | 'FILING' | 'BATTA'>(
+    'GENERAL'
+  );
   const [description, setDescription] = useState('');
   const [caseId, setCaseId] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -78,8 +81,12 @@ export const PersonalReminderModal: React.FC<PersonalReminderModalProps> = ({
             <Text style={styles.title}>
               {t('calendar.add_personal_reminder', 'New Reminder / Deadline')}
             </Text>
-            <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-              <Text style={styles.closeBtnText}>✕</Text>
+            <TouchableOpacity
+              onPress={onClose}
+              style={styles.closeBtn}
+              accessibilityLabel={t('common.close', 'Close')}
+            >
+              <AppIcon name="x" size={18} color={Colors.text.secondary} />
             </TouchableOpacity>
           </View>
 
@@ -87,7 +94,9 @@ export const PersonalReminderModal: React.FC<PersonalReminderModalProps> = ({
             {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
             {/* Title */}
-            <Text style={styles.fieldLabel}>{t('calendar.reminder_title', 'Title *')}</Text>
+            <Text style={styles.fieldLabel}>
+              {t('calendar.reminder_title', 'Title *')}
+            </Text>
             <TextInput
               testID="reminder-title-input"
               style={styles.input}
@@ -98,16 +107,15 @@ export const PersonalReminderModal: React.FC<PersonalReminderModalProps> = ({
             />
 
             {/* Type Selector */}
-            <Text style={styles.fieldLabel}>{t('calendar.reminder_type', 'Category')}</Text>
+            <Text style={styles.fieldLabel}>
+              {t('calendar.reminder_type', 'Category')}
+            </Text>
             <View style={styles.typeSelectorRow}>
-              {(['GENERAL', 'FILING', 'BATTA'] as const).map((tp) => (
+              {(['GENERAL', 'FILING', 'BATTA'] as const).map(tp => (
                 <TouchableOpacity
                   key={tp}
                   testID={`reminder-type-${tp.toLowerCase()}`}
-                  style={[
-                    styles.typeBtn,
-                    reminderType === tp && styles.typeBtnActive,
-                  ]}
+                  style={[styles.typeBtn, reminderType === tp && styles.typeBtnActive]}
                   onPress={() => setReminderType(tp)}
                 >
                   <Text
@@ -125,7 +133,9 @@ export const PersonalReminderModal: React.FC<PersonalReminderModalProps> = ({
             {/* Date & Time */}
             <View style={styles.dateTimeRow}>
               <View style={styles.halfField}>
-                <Text style={styles.fieldLabel}>{t('calendar.date', 'Date (YYYY-MM-DD)')}</Text>
+                <Text style={styles.fieldLabel}>
+                  {t('calendar.date', 'Date (YYYY-MM-DD)')}
+                </Text>
                 <TextInput
                   testID="reminder-date-input"
                   style={styles.input}
@@ -136,7 +146,9 @@ export const PersonalReminderModal: React.FC<PersonalReminderModalProps> = ({
                 />
               </View>
               <View style={styles.halfField}>
-                <Text style={styles.fieldLabel}>{t('calendar.time', 'Time (HH:MM)')}</Text>
+                <Text style={styles.fieldLabel}>
+                  {t('calendar.time', 'Time (HH:MM)')}
+                </Text>
                 <TextInput
                   testID="reminder-time-input"
                   style={styles.input}
@@ -149,7 +161,9 @@ export const PersonalReminderModal: React.FC<PersonalReminderModalProps> = ({
             </View>
 
             {/* Case ID */}
-            <Text style={styles.fieldLabel}>{t('calendar.optional_case_id', 'Case ID (Optional)')}</Text>
+            <Text style={styles.fieldLabel}>
+              {t('calendar.optional_case_id', 'Case ID (Optional)')}
+            </Text>
             <TextInput
               testID="reminder-case-id-input"
               style={styles.input}
@@ -161,7 +175,9 @@ export const PersonalReminderModal: React.FC<PersonalReminderModalProps> = ({
             />
 
             {/* Description */}
-            <Text style={styles.fieldLabel}>{t('calendar.description', 'Description / Notes')}</Text>
+            <Text style={styles.fieldLabel}>
+              {t('calendar.description', 'Description / Notes')}
+            </Text>
             <TextInput
               testID="reminder-description-input"
               style={[styles.input, styles.multilineInput]}
@@ -200,7 +216,7 @@ export const PersonalReminderModal: React.FC<PersonalReminderModalProps> = ({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.7)',
+    backgroundColor: Colors.overlay,
     justifyContent: 'flex-end',
   },
   modalContent: {
@@ -227,13 +243,12 @@ const styles = StyleSheet.create({
     color: Colors.text.primary,
   },
   closeBtn: {
-    padding: 6,
-    borderRadius: 8,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: Colors.surfaceSubtle,
-  },
-  closeBtnText: {
-    fontSize: 16,
-    color: Colors.text.secondary,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   body: {
     marginBottom: 16,
@@ -305,4 +320,3 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 });
-

@@ -58,7 +58,10 @@ export const useCreateTokenAlert = () => {
 
   return useMutation({
     mutationFn: async (payload: CreateTokenAlertPayload): Promise<TokenAlertRuleItem> => {
-      const response = await apiClient.post<TokenAlertRuleItem>(ENDPOINTS.TOKENS.ALERTS, payload);
+      const response = await apiClient.post<TokenAlertRuleItem>(
+        ENDPOINTS.TOKENS.ALERTS,
+        payload
+      );
       return response.data;
     },
     onSuccess: () => {

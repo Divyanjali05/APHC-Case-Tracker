@@ -1,10 +1,10 @@
 # APHC LAWYER APP – PHASE 7: PUSH NOTIFICATIONS, FCM & NOTIFICATION CENTER AUDIT & IMPLEMENTATION REPORT
 
-**Project:** Andhra Pradesh High Court Lawyer App (APHC Case Tracker)  
-**Root Path:** `C:\Users\divya\OneDrive\Documents\Lawyerr`  
-**Current Branch:** `feature/phase-4-to-8-complete-implementation`  
-**Milestone:** Phase 7 – Push Notifications, Firebase Cloud Messaging (FCM), Device Management & In-App Notification Center  
-**Date:** November 7, 2026  
+**Project:** Andhra Pradesh High Court Lawyer App (APHC Case Tracker)
+**Root Path:** `C:\Users\divya\OneDrive\Documents\Lawyerr`
+**Current Branch:** `feature/phase-4-to-8-complete-implementation`
+**Milestone:** Phase 7 – Push Notifications, Firebase Cloud Messaging (FCM), Device Management & In-App Notification Center
+**Date:** November 7, 2026
 **Status:** **PHASE 7 COMPLETE & FULLY VERIFIED**
 
 ---
@@ -78,6 +78,7 @@ flowchart TD
 ```
 
 ### Rationale for Selected Approach
+
 - The mobile application is built with **Expo / React Native**. Expo's push notification service (`https://exp.host/--/api/v2/push/send`) abstracts device APNs and FCM device tokens, allowing unified multi-platform dispatch with automatic token validation.
 - Direct FCM HTTP v1 support (`FCMv1Provider`) is also provided for enterprise environments requiring direct Google Cloud VPC service-account integration.
 - For local development and automated CI environments, `MockPushNotificationProvider` enables 100% deterministic testing without requiring third-party credentials or network connectivity.
@@ -87,6 +88,7 @@ flowchart TD
 ## 3. Backend Implementation Details
 
 ### 3.1 Data Models & Aliases (`backend/apps/notifications/models.py`)
+
 - **`DeviceRegistration` (aliased as `DeviceToken`):**
   - `user`: ForeignKey to `settings.AUTH_USER_MODEL` (Advocate).
   - `expo_push_token`: CharField (indexed, stores Expo push token or native FCM token).
@@ -103,12 +105,14 @@ flowchart TD
   - `data_payload`: JSONField containing full un-redacted case metadata and routing parameters.
 
 ### 3.2 Database Migration
-- Generated and applied migration:  
+
+- Generated and applied migration:
   `backend/apps/notifications/migrations/0004_alter_deviceregistration_options_and_more.py`
   - Added indexes on `user`, `is_active`, `expo_push_token`, and `created_at`.
   - Added unique constraint on `(user, expo_push_token)`.
 
 ### 3.3 Provider Architecture (`backend/apps/notifications/providers.py`)
+
 - **`PushNotificationProvider` (ABC):** Defines `send(tokens, title, body, data, priority, channel_id, sound) -> PushDeliveryResult`.
 - **`MockPushNotificationProvider`:** Records outgoing payloads in memory, simulates `DeviceNotRegistered` token invalidation for invalid tokens, and logs deliveries for test assertions.
 - **`ExpoPushProvider`:** Sends chunks of up to 100 messages to Expo Push API (`https://exp.host/--/api/v2/push/send`) with HTTP Bearer authentication, inspects individual receipt tickets, and detects expired/unregistered tickets.
@@ -116,6 +120,7 @@ flowchart TD
 - **`get_push_provider()` Factory:** Dynamically resolves provider based on `settings.PUSH_NOTIFICATION_PROVIDER` (`mock`, `expo`, or `fcm`).
 
 ### 3.4 Service Layer (`backend/apps/notifications/services.py`)
+
 - `register_device(user, expo_push_token, platform, device_id, app_version)`: Safely registers device, rotates tokens, reassigns token if device changed user, and reactivates dormant records.
 - `deactivate_device(user, expo_push_token, device_id, all_devices)`: Deactivates specific token or all devices registered to the advocate.
 - `sanitize_push_payload(title, body, category, data)`: Replaces confidential case party details on public lock screens with generic judicial alerts while preserving full metadata in authenticated data payloads.
@@ -124,6 +129,7 @@ flowchart TD
 - **Backwards-Compatibility Handlers:** Retained `dispatch_push_to_devices`, `dispatch_notification_to_devices`, `retry_failed_notifications`, `send_reminder_notification`, `send_rescheduled_notification`, `send_judgment_notification`, and `send_hearing_change_notification` to guarantee 100% regression compatibility with prior phases.
 
 ### 3.5 Endpoints & Views (`backend/apps/notifications/urls.py`, `views.py`, `serializers.py`)
+
 - `POST /api/notifications/devices/`: Register or update push token (bypasses default serializer uniqueness to allow reassignment logic in service).
 - `POST /api/notifications/devices/deactivate/`: Deactivate device upon advocate logout (`DeviceDeactivationView`).
 - `GET /api/notifications/unread-count/`: Returns `{ "unread_count": <int> }` for fast mobile badges.
@@ -136,6 +142,7 @@ flowchart TD
 ## 4. Frontend Mobile Implementation Details
 
 ### 4.1 Push Notification Service (`frontend/services/notifications/pushService.ts`)
+
 - **Android Channel Configuration:** Configures `aphc_court_alerts` with `AndroidImportance.MAX`, vibration pattern `[0, 250, 250, 250]`, audio enabled, and lockscreen visibility set to `PUBLIC`.
 - **Token Registration:** Generates persistent device UUID via `expo-secure-store`, requests OS push permissions via `expo-notifications`, fetches Expo push token, and synchronizes with `/api/notifications/devices/`.
 - **Token Deactivation:** On advocate logout, calls `/api/notifications/devices/deactivate/` and removes local cached tokens.
@@ -147,9 +154,11 @@ flowchart TD
   - `category === 'HEARING_REMINDER' | 'REMINDER'` $\to$ `/reminders`
 
 ### 4.2 Offline Encrypted Storage (`frontend/services/offline/offlineStorage.ts`)
+
 - Implemented `saveCachedNotifications` and `getCachedNotifications` using Authenticated AES-256 encryption (`CryptoJS.AES.encrypt` / `decrypt`), ensuring notification history is accessible during court hall connectivity blackouts without exposing unencrypted client data.
 
 ### 4.3 Notification Center Modal (`frontend/components/notifications/NotificationCenterModal.tsx`)
+
 - Slide-up modal displaying notifications with:
   - Header with unread count badge and close button.
   - Category filter pills: `All`, `Hearings`, `Tokens`, `Cases`, `Voice`.
@@ -159,6 +168,7 @@ flowchart TD
 - Integrated conditionally into the main Dashboard (`frontend/app/(tabs)/index.tsx`) and Settings logout workflow (`frontend/app/(tabs)/settings.tsx`).
 
 ### 4.4 Localization Support
+
 - Added translation keys across English (`en.json`), Telugu (`te.json`), and Hindi (`hi.json`) for notification center titles, actions, filter categories, and permission alerts.
 
 ---
@@ -167,16 +177,18 @@ flowchart TD
 
 ### 5.1 Verification Baseline Comparison
 
-| Verification Suite | Prior Reported Baseline | Phase 7 Final Status | Result |
-| :--- | :--- | :--- | :--- |
-| **Backend Pytest** | 357 passed, 1 skipped | **381 passed, 1 skipped (0 failed)** | **+24 new tests, 100% PASS** |
-| **Frontend Jest** | 266 passed | **284 passed, 25 suites (0 failed)** | **+18 new tests, 100% PASS** |
-| **TypeScript (`tsc`)** | 0 errors | **0 errors** | **PASS** |
-| **ESLint** | 0 errors, 0 warnings | **0 errors, 0 warnings (`--max-warnings=0`)** | **PASS** |
-| **Ruff Linter** | 0 errors | **All checks passed!** | **PASS** |
+| Verification Suite     | Prior Reported Baseline | Phase 7 Final Status                          | Result                       |
+| :--------------------- | :---------------------- | :-------------------------------------------- | :--------------------------- |
+| **Backend Pytest**     | 357 passed, 1 skipped   | **381 passed, 1 skipped (0 failed)**          | **+24 new tests, 100% PASS** |
+| **Frontend Jest**      | 266 passed              | **284 passed, 25 suites (0 failed)**          | **+18 new tests, 100% PASS** |
+| **TypeScript (`tsc`)** | 0 errors                | **0 errors**                                  | **PASS**                     |
+| **ESLint**             | 0 errors, 0 warnings    | **0 errors, 0 warnings (`--max-warnings=0`)** | **PASS**                     |
+| **Ruff Linter**        | 0 errors                | **All checks passed!**                        | **PASS**                     |
 
 ### 5.2 Backend Test Coverage (`backend/tests/integration/test_push_notifications.py`)
+
 24 comprehensive integration tests covering:
+
 1. `test_register_device_token_success`
 2. `test_register_device_updates_existing_token`
 3. `test_token_reassigned_when_registered_by_another_user`
@@ -203,7 +215,9 @@ flowchart TD
 24. `test_advocate_data_isolation_for_notifications`
 
 ### 5.3 Frontend Test Coverage (`frontend/tests/pushNotifications.test.tsx`)
+
 18 unit and integration tests covering:
+
 1. Android high-priority channel setup (`aphc_court_alerts`, MAX importance, vibration, sound).
 2. Permission request and Expo push token retrieval.
 3. Permission denial graceful handling.
@@ -227,11 +241,11 @@ flowchart TD
 
 ## 6. Physical Device Verification Status
 
-> [!WARNING]
-> **REAL DEVICE PUSH DELIVERY: NOT VERIFIED**  
+> [!WARNING] > **REAL DEVICE PUSH DELIVERY: NOT VERIFIED**
 > All delivery workflows have been rigorously verified through comprehensive unit, integration, and mock provider automated test suites in local sandboxed environments. End-to-end delivery to a physical iOS/Android device requires external cloud configuration outlined below.
 
 ### External Setup Required for Physical Production Delivery
+
 1. **Firebase Cloud Messaging Setup:**
    - Create project in Google Firebase Console (`https://console.firebase.google.com/`).
    - Download `google-services.json` (Android) and place in `frontend/`.
@@ -250,6 +264,7 @@ flowchart TD
 ## 7. Complete List of Created & Modified Files
 
 ### Backend Files
+
 - `backend/apps/notifications/models.py` (Modified: Added fields to `DeviceRegistration`, categories and status to `NotificationHistory`, model aliases)
 - `backend/apps/notifications/migrations/0004_alter_deviceregistration_options_and_more.py` (Created: Database migration)
 - `backend/apps/notifications/providers.py` (Created: Multi-provider abstraction: Mock, Expo, FCM v1)
@@ -265,6 +280,7 @@ flowchart TD
 - `backend/tests/integration/test_push_notifications.py` (Created: 24 integration tests)
 
 ### Frontend Files
+
 - `frontend/services/api/endpoints.ts` (Modified: Added `DEACTIVATE_DEVICE`, `UNREAD_COUNT`)
 - `frontend/types/index.ts` (Modified: Added `DeviceRegistrationPayload`, `DeviceDeactivationPayload`, new notification categories)
 - `frontend/services/notifications/pushService.ts` (Modified: Channel setup, token registration, deactivation, route resolution, listeners)
@@ -293,4 +309,3 @@ flowchart TD
 Phase 7 is **100% complete, hardened, and verified**. All backend test suites (381 passed), frontend test suites (284 passed across 25 suites), TypeScript compiler checks (0 errors), ESLint rules (0 errors, 0 warnings), and Ruff linting rules pass cleanly.
 
 **Awaiting user instructions before proceeding to Phase 8.**
-

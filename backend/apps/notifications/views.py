@@ -262,7 +262,19 @@ class RealtimeStreamView(APIView):
             except ValueError:
                 pass
 
-        max_duration = int(request.query_params.get("max_duration", 60))
+        try:
+            raw_duration = int(request.query_params.get("max_duration", 60))
+        except (TypeError, ValueError):
+            return Response(
+                {"detail": "max_duration must be an integer."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if raw_duration < 0:
+            return Response(
+                {"detail": "max_duration cannot be negative."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        max_duration = min(raw_duration, 300)
 
         def event_stream():
             cursor = since_id

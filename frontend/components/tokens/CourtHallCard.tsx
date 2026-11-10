@@ -62,15 +62,15 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
   },
   tokenLabel: {
-    color: Colors.gold,
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 1,
+    color: Colors.text.secondary,
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.6,
     marginBottom: 4,
   },
   tokenNumber: {
-    color: Colors.text.white,
+    color: Colors.primary,
     fontSize: 28,
-    fontWeight: '900',
+    fontWeight: '800',
   },
 });

@@ -29,7 +29,9 @@ class VoiceTranscriptionService:
         if not voice_note.audio_file or not voice_note.audio_file.name:
             voice_note.transcription_status = TranscriptionStatus.FAILED
             voice_note.transcription_error = "No audio file associated with this voice note."
-            voice_note.save(update_fields=["transcription_status", "transcription_error", "updated_at"])
+            voice_note.save(
+                update_fields=["transcription_status", "transcription_error", "updated_at"]
+            )
             return voice_note
 
         try:
@@ -37,7 +39,9 @@ class VoiceTranscriptionService:
             if not os.path.exists(audio_path):
                 voice_note.transcription_status = TranscriptionStatus.FAILED
                 voice_note.transcription_error = "Audio file not found on disk."
-                voice_note.save(update_fields=["transcription_status", "transcription_error", "updated_at"])
+                voice_note.save(
+                    update_fields=["transcription_status", "transcription_error", "updated_at"]
+                )
                 return voice_note
         except NotImplementedError:
             # For remote storages without direct .path
@@ -77,7 +81,9 @@ class VoiceTranscriptionService:
                     "updated_at",
                 ]
             )
-            logger.info("Successfully transcribed VoiceNote %s using %s", voice_note.id, result.provider)
+            logger.info(
+                "Successfully transcribed VoiceNote %s using %s", voice_note.id, result.provider
+            )
             try:
                 from apps.notifications.services import NotificationService
 
@@ -107,7 +113,9 @@ class VoiceTranscriptionService:
             logger.exception("Failed to transcribe VoiceNote %s: %s", voice_note.id, exc)
             voice_note.transcription_status = TranscriptionStatus.FAILED
             voice_note.transcription_error = str(exc)
-            voice_note.save(update_fields=["transcription_status", "transcription_error", "updated_at"])
+            voice_note.save(
+                update_fields=["transcription_status", "transcription_error", "updated_at"]
+            )
             try:
                 from apps.notifications.services import NotificationService
 
@@ -130,6 +138,8 @@ class VoiceTranscriptionService:
                     is_sensitive=True,
                 )
             except Exception as notif_exc:
-                logger.debug("Failed to dispatch voice transcription failure notification: %s", notif_exc)
+                logger.debug(
+                    "Failed to dispatch voice transcription failure notification: %s", notif_exc
+                )
 
             return voice_note

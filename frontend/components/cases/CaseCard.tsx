@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Card } from '../common/Card';
 import { Badge } from '../common/Badge';
+import { AppIcon } from '../common/AppIcon';
 import { Colors } from '../../constants/colors';
 import { CaseItem } from '../../types';
 import { formatCaseNumber, formatDate } from '../../utils/formatters';
@@ -79,7 +80,8 @@ export const CaseCard: React.FC<CaseCardProps> = ({ item, onPress, onViewJudgmen
               style={styles.viewJudgmentBtn}
               testID={`view-judgment-btn-${item.id}`}
             >
-              <Text style={styles.viewJudgmentText}>View Judgment ↗</Text>
+              <Text style={styles.viewJudgmentText}>View Judgment</Text>
+              <AppIcon name="external-link" size={12} color="#92400E" />
             </TouchableOpacity>
           ) : null}
         </View>
@@ -92,9 +94,11 @@ export const CaseCard: React.FC<CaseCardProps> = ({ item, onPress, onViewJudgmen
               : item.bench || 'Bench unassigned'}
           </Text>
           <Text style={styles.date} testID={`case-next-date-${item.id}`}>
-            {effectiveStatus.toLowerCase() === 'adjourned'
-              ? `Adjourned to: ${formatDate(nextHearingDate)}`
-              : `Next: ${formatDate(nextHearingDate)}`}
+            {nextHearingDate
+              ? effectiveStatus.toLowerCase() === 'adjourned'
+                ? `Adjourned to: ${formatDate(nextHearingDate)}`
+                : `Next: ${formatDate(nextHearingDate)}`
+              : 'Not Scheduled'}
           </Text>
         </View>
       </Card>
@@ -104,39 +108,45 @@ export const CaseCard: React.FC<CaseCardProps> = ({ item, onPress, onViewJudgmen
 
 const styles = StyleSheet.create({
   card: {
-    padding: 16,
-    marginBottom: 12,
+    padding: 18,
+    marginBottom: 14,
+    backgroundColor: Colors.surface,
+    borderColor: Colors.border,
+    borderWidth: 1,
+    borderRadius: 14,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 6,
+    marginBottom: 8,
   },
   caseNumber: {
     color: Colors.text.primary,
     fontSize: 16,
-    fontWeight: '800',
+    fontWeight: '700',
+    letterSpacing: 0.2,
   },
   partiesRow: {
     marginBottom: 10,
   },
   parties: {
-    color: Colors.text.secondary,
+    color: '#334155',
     fontSize: 13,
-    lineHeight: 18,
+    lineHeight: 19,
     fontWeight: '500',
   },
   filingDate: {
     color: Colors.text.muted,
-    fontSize: 11,
+    fontSize: 12,
     marginTop: 2,
+    fontWeight: '500',
   },
   judgmentRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: Colors.surfaceSubtle,
+    backgroundColor: '#F8FAFC',
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 8,
@@ -150,7 +160,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   judgmentLabel: {
-    color: Colors.text.muted,
+    color: Colors.text.secondary,
     fontSize: 12,
     fontWeight: '600',
   },
@@ -165,16 +175,21 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
   },
   viewJudgmentBtn: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    backgroundColor: 'rgba(212, 175, 55, 0.15)',
-    borderRadius: 6,
-    borderColor: Colors.gold,
+    flexDirection: 'row',
+    gap: 4,
+    minHeight: 36,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    backgroundColor: Colors.goldSurface,
+    borderRadius: 8,
+    borderColor: Colors.goldBorder,
     borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   viewJudgmentText: {
-    color: Colors.gold,
-    fontSize: 11,
+    color: '#92400E',
+    fontSize: 12,
     fontWeight: '700',
   },
   footer: {
@@ -182,16 +197,17 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     borderTopWidth: 1,
-    borderTopColor: Colors.border,
-    paddingTop: 8,
+    borderTopColor: '#F1F5F9',
+    paddingTop: 10,
   },
   bench: {
-    color: Colors.primaryLight,
+    color: Colors.primary,
     fontSize: 12,
     fontWeight: '600',
   },
   date: {
-    color: Colors.text.muted,
+    color: Colors.text.secondary,
     fontSize: 12,
+    fontWeight: '500',
   },
 });

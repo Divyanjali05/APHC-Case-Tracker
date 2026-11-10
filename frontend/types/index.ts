@@ -399,6 +399,16 @@ export interface DashboardNotificationItem {
   case_id: number | null;
 }
 
+export interface DashboardActivityItem {
+  id: number;
+  case_id: number;
+  case_number: string;
+  event_type: string;
+  description: string;
+  source: string;
+  created_at: string;
+}
+
 export interface DashboardSyncStatus {
   last_synced_at: string | null;
   is_fresh: boolean;
@@ -411,6 +421,7 @@ export interface DashboardData {
   upcoming_hearings: DashboardHearingItem[];
   upcoming_reminders: DashboardReminderItem[];
   recent_notifications: DashboardNotificationItem[];
+  recent_activity?: DashboardActivityItem[];
   sync_status: DashboardSyncStatus;
 }
 
@@ -454,7 +465,11 @@ export interface CaseNoteItem {
   updated_at: string;
 }
 
-export type VoiceTranscriptionStatus = 'NOT_STARTED' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
+export type VoiceTranscriptionStatus =
+  | 'NOT_STARTED'
+  | 'PROCESSING'
+  | 'COMPLETED'
+  | 'FAILED';
 export type VoiceTranscriptionLanguage = 'en' | 'te' | 'hi';
 
 export interface VoiceNoteItem {
@@ -486,12 +501,15 @@ export interface VoiceNoteItem {
 
 export interface CreateVoiceNotePayload {
   title?: string;
-  audio_file: {
-    uri: string;
-    name: string;
-    type: string;
-    size?: number;
-  } | Blob | File;
+  audio_file:
+    | {
+        uri: string;
+        name: string;
+        type: string;
+        size?: number;
+      }
+    | Blob
+    | File;
   transcription_language?: VoiceTranscriptionLanguage;
   audio_duration_seconds?: number;
   recorded_at?: string;
@@ -641,4 +659,179 @@ export interface CalendarSyncConnectPayload {
   sync_personal_reminders?: boolean;
 }
 
+export type UserRole = 'ADMIN' | 'ADVOCATE';
+export type AdvocateDesignation = 'SENIOR' | 'ASSOCIATE' | 'CLERK';
 
+export interface UserProfile {
+  id: number;
+  bar_council_enrollment_number: string;
+  phone_number: string;
+  chamber_address: string;
+  role: AdvocateDesignation | string;
+  preferred_language: 'en' | 'te' | 'hi' | string;
+  is_verified: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AuthUser {
+  id: number;
+  username: string;
+  email: string;
+  first_name: string;
+  last_name: string;
+  full_name: string;
+  role: UserRole;
+  is_admin: boolean;
+  is_active: boolean;
+  is_staff: boolean;
+  is_superuser: boolean;
+  date_joined?: string;
+  last_login?: string | null;
+  profile: UserProfile | null;
+}
+
+export interface SelfProfileUpdatePayload {
+  first_name?: string;
+  last_name?: string;
+  email?: string;
+  phone_number?: string;
+  chamber_address?: string;
+  preferred_language?: 'en' | 'te' | 'hi';
+}
+
+export interface AdminUserItem extends AuthUser {
+  assigned_cases_count: number;
+}
+
+export interface AdminAssignedCaseSummary {
+  id: number;
+  formatted_case_number: string;
+  petitioner: string;
+  respondent: string;
+  current_stage: string;
+  court_hall_number?: number | null;
+  next_hearing_date?: string | null;
+}
+
+export interface AdminUserDetail extends AdminUserItem {
+  assigned_cases: AdminAssignedCaseSummary[];
+}
+
+export interface AdminCreateUserPayload {
+  enrollment_number: string;
+  username?: string;
+  email?: string;
+  password: string;
+  first_name?: string;
+  last_name?: string;
+  phone_number?: string;
+  chamber_address?: string;
+  designation?: AdvocateDesignation;
+  preferred_language?: 'en' | 'te' | 'hi';
+  account_role?: UserRole;
+  is_active?: boolean;
+  is_verified?: boolean;
+}
+
+export interface AdminUpdateUserPayload {
+  first_name?: string;
+  last_name?: string;
+  email?: string;
+  phone_number?: string;
+  chamber_address?: string;
+  designation?: AdvocateDesignation;
+  preferred_language?: 'en' | 'te' | 'hi';
+  is_active?: boolean;
+  is_verified?: boolean;
+  account_role?: UserRole;
+}
+
+export interface AdminCaseAdvocateSummary {
+  id: number;
+  username: string;
+  full_name: string;
+  enrollment_number?: string | null;
+  is_active: boolean;
+  role: UserRole;
+}
+
+export interface AdminCaseItem {
+  id: number;
+  case_type: string;
+  case_number: string;
+  filing_year: number;
+  formatted_case_number: string;
+  petitioner: string;
+  respondent: string;
+  current_stage: string;
+  bench?: string;
+  court_hall_number?: number | null;
+  next_hearing_date?: string | null;
+  is_assigned: boolean;
+  assigned_advocates: AdminCaseAdvocateSummary[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CaseAssignmentPayload {
+  advocate_id: number;
+  action?: 'assign' | 'unassign';
+  notes?: string;
+  replace_advocate_id?: number;
+}
+
+export interface CaseAssignmentHistoryItem {
+  id: number;
+  case: number;
+  case_number: string;
+  advocate: number;
+  advocate_name: string;
+  advocate_enrollment?: string | null;
+  assigned_by?: number | null;
+  assigned_by_name: string;
+  action: 'ASSIGNED' | 'UNASSIGNED';
+  notes: string;
+  created_at: string;
+}
+
+export interface AdminAuditLogItem {
+  id: number;
+  action: string;
+  actor?: number | null;
+  actor_username?: string | null;
+  actor_name: string;
+  target_user?: number | null;
+  target_username?: string | null;
+  target_case?: number | null;
+  target_case_number?: string | null;
+  summary: string;
+  metadata?: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface AdminDashboardStats {
+  total_advocates: number;
+  active_advocates: number;
+  inactive_advocates: number;
+  pending_approvals: number;
+  total_admins: number;
+  total_cases: number;
+  assigned_cases: number;
+  unassigned_cases: number;
+}
+
+export interface AdminSystemOverview {
+  database_status: string;
+  database_engine: string;
+  debug_mode: boolean;
+  total_assignments: number;
+  audit_log_count: number;
+  recent_registrations_7d: number;
+}
+
+export interface AdminDashboardResponse {
+  stats: AdminDashboardStats;
+  recent_activity: AdminAuditLogItem[];
+  system_overview: AdminSystemOverview;
+}

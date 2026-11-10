@@ -283,9 +283,7 @@ class TestDailyAgendaAndCalendar:
         assert len(data["compliance_deadlines"]) == 1
         assert data["compliance_deadlines"][0]["title"] == "File Counter Affidavit"
 
-    def test_token_events_aggregated(
-        self, api_client, advocate_a, case_a, court_hall_1
-    ):
+    def test_token_events_aggregated(self, api_client, advocate_a, case_a, court_hall_1):
         api_client.force_authenticate(user=advocate_a)
         today = AgendaService.get_ist_today()
 
@@ -346,7 +344,10 @@ class TestPersonalRemindersAPI:
         res2 = api_client.post("/api/calendar/reminders/", data=payload)
         assert res2.status_code == status.HTTP_201_CREATED
         assert res2.data["id"] == res1.data["id"]
-        assert Reminder.objects.filter(advocate=advocate_a, title="Submit Written Submissions").count() == 1
+        assert (
+            Reminder.objects.filter(advocate=advocate_a, title="Submit Written Submissions").count()
+            == 1
+        )
 
     def test_personal_reminder_update(self, api_client, advocate_a, case_a):
         api_client.force_authenticate(user=advocate_a)
@@ -388,9 +389,7 @@ class TestPersonalRemindersAPI:
 class TestCalendarIcsExport:
     """Test suite covering RFC 5545 iCalendar generation and formatting."""
 
-    def test_calendar_ics_export_headers_and_structure(
-        self, api_client, advocate_a, case_a
-    ):
+    def test_calendar_ics_export_headers_and_structure(self, api_client, advocate_a, case_a):
         api_client.force_authenticate(user=advocate_a)
         today = AgendaService.get_ist_today()
 

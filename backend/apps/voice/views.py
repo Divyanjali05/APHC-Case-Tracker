@@ -99,7 +99,7 @@ class CaseVoiceNoteListCreateView(APIView):
         CaseHistoryService.record_event(
             case=case,
             event_type="NOTE_ADDED",
-            description=f"Voice note recorded: {voice_note.title}",
+            description="Voice note recorded.",
             changed_by=request.user,
             source="MANUAL",
         )
@@ -116,7 +116,9 @@ class CaseVoiceNoteListCreateView(APIView):
                 try:
                     transcribe_voice_note.delay(voice_note.id)
                 except Exception as exc:
-                    logger.warning("Failed to queue transcription task asynchronously: %s; running inline", exc)
+                    logger.warning(
+                        "Failed to queue transcription task asynchronously: %s; running inline", exc
+                    )
                     VoiceTranscriptionService.process_transcription(voice_note.id)
                     voice_note.refresh_from_db()
 
@@ -136,6 +138,7 @@ class VoiceNoteDetailView(APIView):
             VoiceNote.objects.select_related("case", "advocate"),
             id=pk,
             advocate=self.request.user,
+            case__tracked_by=self.request.user,
         )
 
     def get(self, request, pk: int):
@@ -151,7 +154,7 @@ class VoiceNoteDetailView(APIView):
         CaseHistoryService.record_event(
             case=voice_note.case,
             event_type="NOTE_UPDATED",
-            description=f"Voice note updated: {updated.title}",
+            description="Voice note updated.",
             changed_by=request.user,
             source="MANUAL",
         )
@@ -161,13 +164,12 @@ class VoiceNoteDetailView(APIView):
     def delete(self, request, pk: int):
         voice_note = self.get_voice_note(pk)
         case = voice_note.case
-        title = voice_note.title
         voice_note.delete()
 
         CaseHistoryService.record_event(
             case=case,
             event_type="NOTE_DELETED",
-            description=f"Voice note deleted: {title}",
+            description="Voice note deleted.",
             changed_by=request.user,
             source="MANUAL",
         )
@@ -181,7 +183,12 @@ class VoiceNoteTranscribeView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, pk: int):
-        voice_note = get_object_or_404(VoiceNote, id=pk, advocate=request.user)
+        voice_note = get_object_or_404(
+            VoiceNote,
+            id=pk,
+            advocate=request.user,
+            case__tracked_by=request.user,
+        )
 
         language = request.data.get("transcription_language")
         if language and language in TranscriptionLanguage.values:
@@ -216,6 +223,7 @@ class VoiceNoteAudioStreamView(APIView):
             VoiceNote.objects.select_related("case", "advocate"),
             id=pk,
             advocate=request.user,
+            case__tracked_by=request.user,
         )
 
         if not voice_note.audio_file:
@@ -257,9 +265,7 @@ class VoiceStatusView(APIView):
                 "max_upload_size_bytes": getattr(
                     settings, "MAX_VOICE_UPLOAD_SIZE_BYTES", 25 * 1024 * 1024
                 ),
-                "max_duration_seconds": getattr(
-                    settings, "MAX_VOICE_DURATION_SECONDS", 600
-                ),
+                "max_duration_seconds": getattr(settings, "MAX_VOICE_DURATION_SECONDS", 600),
             },
             status=status.HTTP_200_OK,
         )

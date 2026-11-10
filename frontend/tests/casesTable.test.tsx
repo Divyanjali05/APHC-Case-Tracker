@@ -47,7 +47,7 @@ const mockCases: CaseItem[] = [
       order_number: 'ORD-2002',
       bench: 'Chief Justice Bench',
       summary: 'Appeal allowed in full.',
-      document_link: 'https://court.example.com/order2002.pdf',
+      document_link: 'https://aphc.gov.in/orders/ORD-2002.pdf',
       created_at: '2024-10-15T00:00:00Z',
       updated_at: '2024-10-15T00:00:00Z',
     },

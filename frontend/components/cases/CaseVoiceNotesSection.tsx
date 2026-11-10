@@ -27,20 +27,19 @@ export interface CaseVoiceNotesSectionProps {
   caseId: number | string;
 }
 
-export const CaseVoiceNotesSection: React.FC<CaseVoiceNotesSectionProps> = ({ caseId }) => {
+export const CaseVoiceNotesSection: React.FC<CaseVoiceNotesSectionProps> = ({
+  caseId,
+}) => {
   const { t } = useTranslation();
 
   const [search, setSearch] = useState('');
-  const [selectedLanguage, setSelectedLanguage] = useState<VoiceTranscriptionLanguage | undefined>(
-    undefined
-  );
+  const [selectedLanguage, setSelectedLanguage] = useState<
+    VoiceTranscriptionLanguage | undefined
+  >(undefined);
   const [isRecordModalVisible, setIsRecordModalVisible] = useState(false);
   const [offlineNotice, setOfflineNotice] = useState<string | null>(null);
 
-  const {
-    data: voiceNotes = [],
-    isLoading,
-  } = useCaseVoiceNotes(caseId, {
+  const { data: voiceNotes = [], isLoading } = useCaseVoiceNotes(caseId, {
     search: search.trim() || undefined,
     language: selectedLanguage,
   });
@@ -56,7 +55,12 @@ export const CaseVoiceNotesSection: React.FC<CaseVoiceNotesSectionProps> = ({ ca
       setOfflineNotice(null);
     } catch {
       // Offline fallback: queue recording in encrypted storage
-      const audioFile = payload.audio_file as { uri: string; name: string; type: string; size?: number };
+      const audioFile = payload.audio_file as {
+        uri: string;
+        name: string;
+        type: string;
+        size?: number;
+      };
       await offlineVoiceQueue.enqueueRecording('current_user', {
         caseId: Number(caseId),
         title: payload.title || 'Offline Voice Note',
@@ -69,7 +73,10 @@ export const CaseVoiceNotesSection: React.FC<CaseVoiceNotesSectionProps> = ({ ca
         recordedAt: new Date().toISOString(),
       });
       setOfflineNotice(
-        t('voiceNotes.offlineNotice', 'Recorded offline. Queued for upload when connected.')
+        t(
+          'voiceNotes.offlineNotice',
+          'Recorded offline. Queued for upload when connected.'
+        )
       );
     }
   };
@@ -82,7 +89,10 @@ export const CaseVoiceNotesSection: React.FC<CaseVoiceNotesSectionProps> = ({ ca
           style={styles.searchInput}
           value={search}
           onChangeText={setSearch}
-          placeholder={t('voiceNotes.searchPlaceholder', 'Search voice notes or transcripts...')}
+          placeholder={t(
+            'voiceNotes.searchPlaceholder',
+            'Search voice notes or transcripts...'
+          )}
           placeholderTextColor={Colors.text.muted}
           testID="voice-notes-search-input"
         />
@@ -99,18 +109,24 @@ export const CaseVoiceNotesSection: React.FC<CaseVoiceNotesSectionProps> = ({ ca
       <View style={styles.langFilterRow}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
           <TouchableOpacity
-            style={[styles.filterChip, selectedLanguage === undefined && styles.filterChipActive]}
+            style={[
+              styles.filterChip,
+              selectedLanguage === undefined && styles.filterChipActive,
+            ]}
             onPress={() => setSelectedLanguage(undefined)}
             testID="filter-lang-all"
           >
             <Text
-              style={[styles.filterText, selectedLanguage === undefined && styles.filterTextActive]}
+              style={[
+                styles.filterText,
+                selectedLanguage === undefined && styles.filterTextActive,
+              ]}
             >
               All Languages
             </Text>
           </TouchableOpacity>
 
-          {(['en', 'te', 'hi'] as VoiceTranscriptionLanguage[]).map((lang) => {
+          {(['en', 'te', 'hi'] as VoiceTranscriptionLanguage[]).map(lang => {
             const isActive = selectedLanguage === lang;
             const labels: Record<VoiceTranscriptionLanguage, string> = {
               en: 'English',
@@ -150,7 +166,10 @@ export const CaseVoiceNotesSection: React.FC<CaseVoiceNotesSectionProps> = ({ ca
             {t('voiceNotes.empty', 'No voice notes recorded for this case yet.')}
           </Text>
           <Text style={styles.emptySubtitle}>
-            {t('voiceNotes.subtitle', 'Tap "+ Record" to record audio dictation with automated STT.')}
+            {t(
+              'voiceNotes.subtitle',
+              'Tap "+ Record" to record audio dictation with automated STT.'
+            )}
           </Text>
           <Button
             title={t('voiceNotes.recordNote', 'Record Voice Note')}
@@ -161,18 +180,22 @@ export const CaseVoiceNotesSection: React.FC<CaseVoiceNotesSectionProps> = ({ ca
         </View>
       ) : (
         <View style={styles.list}>
-          {voiceNotes.map((note) => (
+          {voiceNotes.map(note => (
             <VoiceNoteCard
               key={note.id}
               note={note}
-              onUpdate={async (data) => {
+              onUpdate={async data => {
                 await updateMutation.mutateAsync({ noteId: note.id, caseId, data });
               }}
               onDelete={async () => {
                 await deleteMutation.mutateAsync({ noteId: note.id, caseId });
               }}
-              onRetrySTT={async (lang) => {
-                await transcribeMutation.mutateAsync({ noteId: note.id, caseId, language: lang });
+              onRetrySTT={async lang => {
+                await transcribeMutation.mutateAsync({
+                  noteId: note.id,
+                  caseId,
+                  language: lang,
+                });
               }}
               isUpdating={updateMutation.isPending}
               isDeleting={deleteMutation.isPending}

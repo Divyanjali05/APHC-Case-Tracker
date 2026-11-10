@@ -19,12 +19,21 @@ app_name = "agenda"
 
 urlpatterns = [
     path("agenda/", DailyAgendaAPIView.as_view(), name="daily-agenda"),
-    path("reminders/", PersonalReminderListCreateAPIView.as_view(), name="personal-reminders-list-create"),
-    path("reminders/<int:pk>/", PersonalReminderDetailAPIView.as_view(), name="personal-reminder-detail"),
+    path(
+        "reminders/",
+        PersonalReminderListCreateAPIView.as_view(),
+        name="personal-reminders-list-create",
+    ),
+    path(
+        "reminders/<int:pk>/",
+        PersonalReminderDetailAPIView.as_view(),
+        name="personal-reminder-detail",
+    ),
     path("export/ics/", CalendarIcsExportAPIView.as_view(), name="calendar-ics-export"),
     path("sync/status/", CalendarSyncStatusAPIView.as_view(), name="calendar-sync-status"),
     path("sync/connect/", CalendarSyncConnectAPIView.as_view(), name="calendar-sync-connect"),
     path("sync/trigger/", CalendarSyncTriggerAPIView.as_view(), name="calendar-sync-trigger"),
-    path("sync/disconnect/", CalendarSyncDisconnectAPIView.as_view(), name="calendar-sync-disconnect"),
+    path(
+        "sync/disconnect/", CalendarSyncDisconnectAPIView.as_view(), name="calendar-sync-disconnect"
+    ),
 ]
-

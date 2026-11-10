@@ -72,4 +72,3 @@ def sync_active_token_alerts() -> dict[str, Any]:
             "errors": 1,
             "last_error": str(exc),
         }
-

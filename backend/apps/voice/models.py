@@ -32,9 +32,7 @@ class VoiceNote(models.Model):
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="voice_notes"
     )
     title = models.CharField(max_length=200)
-    audio_file = models.FileField(
-        storage=secure_voice_storage, upload_to=voice_note_upload_path
-    )
+    audio_file = models.FileField(storage=secure_voice_storage, upload_to=voice_note_upload_path)
     audio_duration_seconds = models.FloatField(default=0.0)
     audio_file_size_bytes = models.PositiveIntegerField(default=0)
     audio_mime_type = models.CharField(max_length=100, default="audio/m4a")

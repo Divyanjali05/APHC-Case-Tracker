@@ -1,6 +1,8 @@
 import sys
 from datetime import timedelta
 from pathlib import Path
+from typing import Any
+from urllib.parse import parse_qs, unquote, urlparse
 
 from decouple import Csv, config
 from dotenv import load_dotenv
@@ -213,8 +215,11 @@ SIMPLE_JWT = {
 }
 
 # Celery & Redis Configuration
-REDIS_URL = config("REDIS_URL", default="redis://localhost:6379/0")
-CELERY_BROKER_URL = config("CELERY_BROKER_URL", default=REDIS_URL)
+CELERY_BROKER_URL = config(
+    "CELERY_BROKER_URL",
+    default=config("REDIS_URL", default="redis://localhost:6379/0"),
+)
+REDIS_URL = config("REDIS_URL", default=CELERY_BROKER_URL or "redis://localhost:6379/0")
 CELERY_RESULT_BACKEND = config("CELERY_RESULT_BACKEND", default="redis://localhost:6379/1")
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
@@ -295,3 +300,125 @@ SPECTACULAR_SETTINGS = {
     "VERSION": "0.1.0",
     "SERVE_INCLUDE_SCHEMA": False,
 }
+
+# PostgreSQL URL Parsing Helpers
+_LOCAL_POSTGRESQL_HOSTS = {"", "localhost", "127.0.0.1", "::1"}
+_POSTGRESQL_INT_OPTIONS = {
+    "connect_timeout",
+    "keepalives",
+    "keepalives_idle",
+    "keepalives_interval",
+    "keepalives_count",
+    "tcp_user_timeout",
+}
+_POSTGRESQL_STR_OPTIONS = {
+    "sslmode",
+    "channel_binding",
+    "sslcert",
+    "sslkey",
+    "sslrootcert",
+    "sslcrl",
+    "sslpassword",
+    "sslsni",
+    "sslnegotiation",
+    "application_name",
+    "target_session_attrs",
+    "options",
+    "service",
+    "gssencmode",
+    "krbsrvname",
+}
+_POSTGRESQL_LOWERCASE_OPTIONS = {"sslmode", "channel_binding", "gssencmode", "sslsni"}
+
+
+def is_local_postgresql_host(host: str | None) -> bool:
+    """Return True when host refers to a local loopback address or Unix socket."""
+    normalized = (host or "").strip().strip("[]").lower()
+    return normalized in _LOCAL_POSTGRESQL_HOSTS or normalized.startswith("/")
+
+
+def build_postgresql_params_config(
+    *,
+    name: str,
+    user: str = "postgres",
+    password: str = "",
+    host: str = "localhost",
+    port: int = 5432,
+    sslmode: str | None = None,
+    conn_max_age: int = 0,
+) -> dict[str, Any]:
+    """Build a Django PostgreSQL DATABASES['default'] configuration dict."""
+    options: dict[str, Any] = {}
+    cleaned_sslmode = (sslmode or "").strip().lower()
+    if cleaned_sslmode:
+        options["sslmode"] = cleaned_sslmode
+    elif not is_local_postgresql_host(host):
+        options["sslmode"] = "require"
+
+    db_config: dict[str, Any] = {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": name,
+        "USER": user,
+        "PASSWORD": password,
+        "HOST": host,
+        "PORT": port,
+        "OPTIONS": options,
+    }
+    if conn_max_age and conn_max_age > 0:
+        db_config["CONN_MAX_AGE"] = conn_max_age
+        db_config["CONN_HEALTH_CHECKS"] = True
+
+    return db_config
+
+
+def parse_postgresql_url(database_url: str, *, conn_max_age: int = 0) -> dict[str, Any]:
+    """Parse DATABASE_URL into a Django PostgreSQL configuration dict safely."""
+    parsed_db = urlparse(database_url.strip())
+    scheme = parsed_db.scheme.lower()
+    if scheme not in ("postgres", "postgresql"):
+        raise ValueError(f"Unsupported PostgreSQL DATABASE_URL scheme: '{scheme or '<empty>'}'.")
+
+    db_name = unquote(parsed_db.path.lstrip("/")) if parsed_db.path else ""
+    if not db_name:
+        raise ValueError("DATABASE_URL must specify a PostgreSQL database name.")
+
+    host = unquote(parsed_db.hostname) if parsed_db.hostname else "localhost"
+    user = unquote(parsed_db.username) if parsed_db.username else "postgres"
+    password = unquote(parsed_db.password) if parsed_db.password else ""
+    port = parsed_db.port or 5432
+
+    options: dict[str, Any] = {}
+    query_params = parse_qs(parsed_db.query)
+
+    for key, values in query_params.items():
+        if not values:
+            continue
+        raw_value = values[-1].strip()
+        if not raw_value:
+            continue
+
+        if key in _POSTGRESQL_INT_OPTIONS:
+            try:
+                options[key] = int(raw_value)
+            except ValueError as exc:
+                raise ValueError(f"Invalid integer value for PostgreSQL option '{key}'.") from exc
+        elif key in _POSTGRESQL_STR_OPTIONS:
+            options[key] = raw_value.lower() if key in _POSTGRESQL_LOWERCASE_OPTIONS else raw_value
+
+    if "sslmode" not in options and not is_local_postgresql_host(host):
+        options["sslmode"] = "require"
+
+    db_config: dict[str, Any] = {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": db_name,
+        "USER": user,
+        "PASSWORD": password,
+        "HOST": host,
+        "PORT": port,
+        "OPTIONS": options,
+    }
+    if conn_max_age and conn_max_age > 0:
+        db_config["CONN_MAX_AGE"] = conn_max_age
+        db_config["CONN_HEALTH_CHECKS"] = True
+
+    return db_config

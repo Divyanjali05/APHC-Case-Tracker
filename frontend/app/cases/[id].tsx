@@ -7,18 +7,22 @@ import {
   Linking,
   Alert,
   TouchableOpacity,
+  useWindowDimensions,
 } from 'react-native';
 import { AxiosError } from 'axios';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { ScreenContainer } from '../../components/common/ScreenContainer';
 import { Card } from '../../components/common/Card';
 import { Badge } from '../../components/common/Badge';
 import { Button } from '../../components/common/Button';
-import { LoadingIndicator } from '../../components/common/LoadingIndicator';
-import { EmptyState } from '../../components/common/EmptyState';
+import { AppIcon } from '../../components/common/AppIcon';
+import { SkeletonCard } from '../../components/common/SkeletonCard';
+import { ErrorState } from '../../components/common/ErrorState';
+import { useToast } from '../../components/common/Toast';
 import { OfflineBanner } from '../../components/offline/OfflineBanner';
 import { Colors } from '../../constants/colors';
+import { Radius, Shadows, Spacing } from '../../constants/theme';
 import { useCaseDetail, useCaseHistory } from '../../features/cases/hooks';
 import {
   useCourtStatus,
@@ -28,6 +32,7 @@ import {
 import { formatCaseNumber, formatDate } from '../../utils/formatters';
 import { speechService } from '../../services/speech/ttsService';
 import { HearingItem, JudgmentItem } from '../../types';
+import { isOfficialJudgmentDocumentAvailable } from '../../components/cases/JudgmentDetailsModal';
 import { CaseHistoryTimeline } from '../../components/cases/CaseHistoryTimeline';
 import { CaseDocumentsSection } from '../../components/cases/CaseDocumentsSection';
 import { CaseNotesSection } from '../../components/cases/CaseNotesSection';
@@ -41,8 +46,15 @@ import { tokenStorage } from '../../services/auth/tokenStorage';
 
 export default function CaseDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const router = useRouter();
+  const { width } = useWindowDimensions();
+  const isDesktop = width >= 960;
   const { t, i18n } = useTranslation();
-  const [activeTab, setActiveTab] = useState<'OVERVIEW' | 'DOCUMENTS' | 'NOTES' | 'VOICE_NOTES'>('OVERVIEW');
+  const { showToast } = useToast();
+
+  const [activeTab, setActiveTab] = useState<
+    'OVERVIEW' | 'HEARINGS' | 'DOCUMENTS' | 'NOTES' | 'VOICE_NOTES' | 'JUDGMENT'
+  >('OVERVIEW');
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [rescheduleHearing, setRescheduleHearing] = useState<HearingItem | null>(null);
   const [syncFeedback, setSyncFeedback] = useState<{
@@ -57,22 +69,25 @@ export default function CaseDetailScreen() {
     try {
       setIsExportingPdf(true);
       const token = await tokenStorage.getAccessToken();
-      const exportUrl = `${API_BASE_URL}${ENDPOINTS.CASES.EXPORT_PDF(caseItem.id)}?token=${token || ''}`;
+      const exportUrl = `${API_BASE_URL}${ENDPOINTS.CASES.EXPORT_PDF(
+        caseItem.id
+      )}?token=${token || ''}`;
       const canOpen = await Linking.canOpenURL(exportUrl);
       if (canOpen) {
         await Linking.openURL(exportUrl);
       } else {
-        Alert.alert(
-          t('export.exportSuccess', 'Export Complete'),
-          `Docket PDF available for ${caseItem.case_type} ${caseItem.case_number}/${caseItem.filing_year}`
+        showToast(
+          `Docket PDF available for ${caseItem.case_type} ${caseItem.case_number}/${caseItem.filing_year}`,
+          'success'
         );
       }
     } catch {
-      Alert.alert(t('common.error', 'Error'), t('export.exportFailed', 'Failed to generate PDF.'));
+      showToast(t('export.exportFailed', 'Failed to generate PDF.'), 'error');
     } finally {
       setIsExportingPdf(false);
     }
   };
+
   const {
     data: historyData,
     isLoading: isHistoryLoading,
@@ -103,12 +118,14 @@ export default function CaseDetailScreen() {
       { caseId: id },
       {
         onSuccess: data => {
+          const msg = data.is_meaningful_change
+            ? `Status updated: ${data.new_status || 'Synced'} (Alert dispatched)`
+            : 'Court status synchronized (No change).';
           setSyncFeedback({
-            message: data.is_meaningful_change
-              ? `Status updated: ${data.new_status || 'Synced'} (Alert dispatched)`
-              : 'Court status synchronized (No change).',
+            message: msg,
             error: null,
           });
+          showToast(msg, 'success');
           refetch();
           refetchHistory();
           refetchCourtStatus();
@@ -137,7 +154,10 @@ export default function CaseDetailScreen() {
   if (isLoading) {
     return (
       <ScreenContainer testID="case-detail-loading">
-        <LoadingIndicator message="Loading docket details..." />
+        <View style={[styles.mainWrapper, isDesktop && styles.desktopContainer]}>
+          <SkeletonCard variant="card" count={3} />
+          <Text style={styles.loadingText}>Loading docket details...</Text>
+        </View>
       </ScreenContainer>
     );
   }
@@ -145,27 +165,31 @@ export default function CaseDetailScreen() {
   if (isError || !caseItem) {
     return (
       <ScreenContainer testID="case-detail-error">
-        <EmptyState
-          title="Case Not Found"
-          description="Could not load the requested court matter or the case is not synced."
-          actionLabel={t('common.retry')}
-          onAction={() => refetch()}
-        />
+        <View style={[styles.mainWrapper, isDesktop && styles.desktopContainer]}>
+          <ErrorState
+            title="Case Not Found"
+            message="Could not load the requested court matter or you do not have access to this case."
+            retryLabel={t('common.retry', 'Retry')}
+            onRetry={() => refetch()}
+          />
+          <Button title="Back to Cases" variant="outline" onPress={() => router.back()} />
+        </View>
       </ScreenContainer>
     );
   }
 
   const effectiveJudgment: JudgmentItem | undefined =
     caseItem.latest_judgment || (caseItem.judgments && caseItem.judgments[0]);
+  const hasValidDocument = Boolean(
+    effectiveJudgment?.document_link &&
+      isOfficialJudgmentDocumentAvailable(effectiveJudgment.document_link)
+  );
 
   const handleOpenDoc = async (url?: string) => {
-    if (!url) {
+    if (!url || !isOfficialJudgmentDocumentAvailable(url)) {
       Alert.alert(
         t('judgment.noDocTitle', 'No Document Attached'),
-        t(
-          'judgment.noDocDescription',
-          'A certified copy has not yet been uploaded to the court docket repository.'
-        )
+        t('judgment.docNotUploaded', 'Official judgment PDF has not been uploaded yet.')
       );
       return;
     }
@@ -174,15 +198,15 @@ export default function CaseDetailScreen() {
       if (supported) {
         await Linking.openURL(url);
       } else {
-        Alert.alert(
-          t('common.error', 'Error'),
-          t('judgment.docOpenError', 'Unable to open the external document link.')
+        showToast(
+          t('judgment.docOpenError', 'Unable to open the external document link.'),
+          'error'
         );
       }
     } catch {
-      Alert.alert(
-        t('common.error', 'Error'),
-        t('judgment.docOpenError', 'Unable to open the external document link.')
+      showToast(
+        t('judgment.docOpenError', 'Unable to open the external document link.'),
+        'error'
       );
     }
   };
@@ -199,6 +223,183 @@ export default function CaseDetailScreen() {
     speechService.speak(summary, i18n.language);
   };
 
+  const renderJudgmentSection = () => (
+    <Card style={styles.sectionCard} testID="case-detail-judgment-card">
+      <View style={styles.judgmentCardHeader}>
+        <Text style={styles.sectionTitle}>{t('judgment.title', 'Judgment Details')}</Text>
+        <Badge
+          label={
+            effectiveJudgment
+              ? t('cases.judgmentAvailable', 'Judgment Available')
+              : t('cases.judgmentPending', 'Pending')
+          }
+          variant={effectiveJudgment ? 'gold' : 'primary'}
+        />
+      </View>
+
+      {effectiveJudgment ? (
+        <View style={styles.judgmentBody}>
+          <View style={styles.detailRow}>
+            <Text style={styles.detailLabel}>
+              {t('judgment.judgmentDate', 'Judgment Date')}
+            </Text>
+            <Text style={[styles.detailValue, styles.highlightDate]}>
+              {formatDate(effectiveJudgment.judgment_date)}
+            </Text>
+          </View>
+          {effectiveJudgment.order_number ? (
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>
+                {t('judgment.orderNumber', 'Order Number')}
+              </Text>
+              <Text style={styles.detailValue}>{effectiveJudgment.order_number}</Text>
+            </View>
+          ) : null}
+          {effectiveJudgment.summary ? (
+            <View style={styles.judgmentSummaryBox}>
+              <Text style={styles.judgmentSummaryLabel}>
+                {t('judgment.summary', 'Summary')}:
+              </Text>
+              <Text style={styles.judgmentSummaryContent}>
+                {effectiveJudgment.summary}
+              </Text>
+            </View>
+          ) : null}
+          {hasValidDocument && effectiveJudgment.document_link ? (
+            <Button
+              title={t('judgment.downloadDoc', 'Open Official Judgment (PDF)')}
+              variant="primary"
+              onPress={() => handleOpenDoc(effectiveJudgment.document_link)}
+              style={styles.docButton}
+              testID="detail-open-judgment-doc-btn"
+            />
+          ) : (
+            <Text style={styles.docPendingText} testID="detail-judgment-doc-pending">
+              {t(
+                'judgment.docNotUploaded',
+                'Official judgment PDF has not been uploaded yet.'
+              )}
+            </Text>
+          )}
+        </View>
+      ) : (
+        <Text style={styles.emptyHearings}>
+          {t(
+            'judgment.noSummary',
+            'No judgment record has been pronounced yet for this court matter.'
+          )}
+        </Text>
+      )}
+    </Card>
+  );
+
+  const renderHearingsTimelineSection = () => (
+    <>
+      {/* Hearing History */}
+      <Card style={styles.sectionCard}>
+        <Text style={styles.sectionTitle}>{t('cases.hearings')}</Text>
+
+        {caseItem.hearings && caseItem.hearings.length > 0 ? (
+          caseItem.hearings.map((hearing: HearingItem) => (
+            <View key={hearing.id} style={styles.hearingItem}>
+              <View style={styles.hearingHeader}>
+                <Text style={styles.hearingDate}>
+                  {formatDate(hearing.hearing_date)}
+                  {hearing.hearing_time ? ` • ${hearing.hearing_time}` : ''}
+                </Text>
+                <View style={styles.badgeGroup}>
+                  {hearing.status === 'RESCHEDULED' || hearing.is_rescheduled ? (
+                    <Badge label="Rescheduled" variant="warning" />
+                  ) : (
+                    <Badge
+                      label={
+                        hearing.item_number ? `Item #${hearing.item_number}` : 'Listed'
+                      }
+                      variant="primary"
+                    />
+                  )}
+                </View>
+              </View>
+              {hearing.previous_hearing_date ? (
+                <View style={styles.hearingMetaRow}>
+                  <AppIcon name="refresh" size={12} color={Colors.gold} />
+                  <Text style={styles.hearingPrevDate}>
+                    Prior: {formatDate(hearing.previous_hearing_date)}{' '}
+                    {hearing.previous_hearing_time || ''}
+                  </Text>
+                </View>
+              ) : null}
+              {hearing.business_conducted ? (
+                <Text style={styles.hearingBusiness}>{hearing.business_conducted}</Text>
+              ) : null}
+              {hearing.next_date ? (
+                <Text style={styles.hearingNextDate}>
+                  Next Date: {formatDate(hearing.next_date)}
+                </Text>
+              ) : null}
+              {hearing.status !== 'COMPLETED' && hearing.status !== 'CANCELLED' ? (
+                <TouchableOpacity
+                  style={styles.rescheduleLink}
+                  onPress={() =>
+                    setRescheduleHearing({
+                      ...hearing,
+                      case_details: {
+                        id: caseItem.id,
+                        case_type: caseItem.case_type,
+                        case_number: caseItem.case_number,
+                        filing_year: caseItem.filing_year,
+                        petitioner: caseItem.petitioner,
+                        respondent: caseItem.respondent,
+                        formatted_case_number: formatCaseNumber(
+                          caseItem.case_type,
+                          caseItem.case_number,
+                          caseItem.filing_year
+                        ),
+                      },
+                    })
+                  }
+                  testID={`reschedule-hearing-${hearing.id}`}
+                >
+                  <AppIcon name="calendar" size={12} color={Colors.primaryLight} />
+                  <Text style={styles.rescheduleLinkText}>
+                    {t('hearings.rescheduleAction', 'Reschedule Appearance')}
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          ))
+        ) : (
+          <Text style={styles.emptyHearings}>
+            No previous hearing records synced for this matter.
+          </Text>
+        )}
+      </Card>
+
+      {/* Court Status History Timeline */}
+      <Card style={styles.sectionCard} testID="case-detail-court-status-history-card">
+        <CourtStatusTimeline
+          observations={courtHistoryData || []}
+          isLoading={isCourtHistoryLoading}
+          isError={isCourtHistoryError}
+          onRetry={refetchCourtHistory}
+        />
+      </Card>
+
+      {/* Case Audit Timeline */}
+      <Card style={styles.sectionCard} testID="case-detail-history-card">
+        <Text style={styles.sectionTitle}>
+          {t('history.title', 'Case Audit Timeline')}
+        </Text>
+        <CaseHistoryTimeline
+          history={historyData || []}
+          isLoading={isHistoryLoading}
+          isError={isHistoryError}
+          onRetry={refetchHistory}
+        />
+      </Card>
+    </>
+  );
+
   return (
     <ScreenContainer testID="case-detail-screen">
       <OfflineBanner onSyncComplete={refetch} />
@@ -206,321 +407,273 @@ export default function CaseDetailScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Case Title Banner */}
-        <Card style={styles.bannerCard}>
-          <View style={styles.headerRow}>
-            <Text style={styles.caseNumber}>
-              {formatCaseNumber(
-                caseItem.case_type,
-                caseItem.case_number,
-                caseItem.filing_year
-              )}
-            </Text>
-            <Badge label={caseItem.status || caseItem.current_stage} variant="gold" />
-          </View>
-
-          <Text style={styles.parties}>
-            {caseItem.petitioner}
-            {'\n'}
-            <Text style={styles.vsText}>VERSUS</Text>
-            {'\n'}
-            {caseItem.respondent}
-          </Text>
-
-          <View style={styles.bannerActionsRow}>
-            <Button
-              title="Listen to Case Summary"
-              variant="outline"
-              onPress={handleSpeakSummary}
-              style={styles.bannerActionBtn}
-              testID="speak-case-button"
-            />
-            <Button
-              title={isExportingPdf ? t('export.pdfExporting', 'Exporting PDF...') : t('export.exportPdf', 'Export Docket PDF')}
-              variant="secondary"
-              onPress={handleExportPdf}
-              style={styles.bannerActionBtn}
-              disabled={isExportingPdf}
-              testID="export-case-pdf-button"
-            />
-          </View>
-        </Card>
-
-        {/* Tab Navigation Segmented Bar */}
-        <View style={styles.tabBar} testID="case-detail-tabs">
-          <TouchableOpacity
-            style={[styles.tabButton, activeTab === 'OVERVIEW' && styles.tabButtonActive]}
-            onPress={() => setActiveTab('OVERVIEW')}
-            testID="tab-overview"
-          >
-            <Text style={[styles.tabText, activeTab === 'OVERVIEW' && styles.tabTextActive]}>
-              {t('cases.details', 'Overview')}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.tabButton, activeTab === 'DOCUMENTS' && styles.tabButtonActive]}
-            onPress={() => setActiveTab('DOCUMENTS')}
-            testID="tab-documents"
-          >
-            <Text style={[styles.tabText, activeTab === 'DOCUMENTS' && styles.tabTextActive]}>
-              {t('documents.title', 'Documents')}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.tabButton, activeTab === 'NOTES' && styles.tabButtonActive]}
-            onPress={() => setActiveTab('NOTES')}
-            testID="tab-notes"
-          >
-            <Text style={[styles.tabText, activeTab === 'NOTES' && styles.tabTextActive]}>
-              {t('notes.title', 'Private Notes')}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.tabButton, activeTab === 'VOICE_NOTES' && styles.tabButtonActive]}
-            onPress={() => setActiveTab('VOICE_NOTES')}
-            testID="tab-voice-notes"
-          >
-            <Text style={[styles.tabText, activeTab === 'VOICE_NOTES' && styles.tabTextActive]}>
-              {t('voiceNotes.title', 'Voice Notes')}
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {activeTab === 'DOCUMENTS' && (
-          <CaseDocumentsSection caseId={caseItem.id} />
-        )}
-
-        {activeTab === 'NOTES' && (
-          <CaseNotesSection caseId={caseItem.id} />
-        )}
-
-        {activeTab === 'VOICE_NOTES' && (
-          <CaseVoiceNotesSection caseId={caseItem.id} />
-        )}
-
-        {activeTab === 'OVERVIEW' && (
-          <>
-            {/* Court Listing & Token Card */}
-            <CourtStatusCard
-          caseId={caseItem.id}
-          statusData={courtStatusData}
-          isLoading={isCourtStatusLoading}
-          isError={isCourtStatusError}
-          onSync={handleSyncCourtStatus}
-          isSyncing={isSyncing}
-          syncMessage={syncFeedback.message}
-          syncError={syncFeedback.error}
-        />
-
-        {/* Judgment Information Card */}
-        <Card style={styles.sectionCard} testID="case-detail-judgment-card">
-          <View style={styles.judgmentCardHeader}>
-            <Text style={styles.sectionTitle}>
-              {t('judgment.title', 'Judgment Details')}
-            </Text>
+        <View style={[styles.mainWrapper, isDesktop && styles.desktopContainer]}>
+          {/* Back navigation & Quick header */}
+          <View style={styles.topNavRow}>
+            <TouchableOpacity
+              style={styles.backButton}
+              onPress={() => router.back()}
+              testID="case-detail-back-button"
+              accessibilityRole="button"
+              accessibilityLabel="Back to cases"
+            >
+              <AppIcon name="arrow-left" size={18} color={Colors.primary} />
+              <Text style={styles.backButtonText}>Back to Cases</Text>
+            </TouchableOpacity>
             <Badge
               label={
-                effectiveJudgment
-                  ? t('cases.judgmentAvailable', 'Judgment Available')
-                  : t('cases.judgmentPending', 'Pending')
+                caseItem.court_hall_number
+                  ? `Court Hall ${caseItem.court_hall_number}`
+                  : 'High Court Bench'
               }
-              variant={effectiveJudgment ? 'gold' : 'primary'}
+              variant="secondary"
             />
           </View>
 
-          {effectiveJudgment ? (
-            <View style={styles.judgmentBody}>
-              <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>
-                  {t('judgment.judgmentDate', 'Judgment Date')}
-                </Text>
-                <Text style={[styles.detailValue, styles.highlightDate]}>
-                  {formatDate(effectiveJudgment.judgment_date)}
-                </Text>
-              </View>
-              {effectiveJudgment.order_number ? (
-                <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>
-                    {t('judgment.orderNumber', 'Order Number')}
-                  </Text>
-                  <Text style={styles.detailValue}>{effectiveJudgment.order_number}</Text>
-                </View>
-              ) : null}
-              {effectiveJudgment.summary ? (
-                <View style={styles.judgmentSummaryBox}>
-                  <Text style={styles.judgmentSummaryLabel}>
-                    {t('judgment.summary', 'Summary')}:
-                  </Text>
-                  <Text style={styles.judgmentSummaryContent}>
-                    {effectiveJudgment.summary}
-                  </Text>
-                </View>
-              ) : null}
-              {effectiveJudgment.document_link ? (
-                <Button
-                  title={t('judgment.downloadDoc', 'Open Official Judgment (PDF)')}
-                  variant="primary"
-                  onPress={() => handleOpenDoc(effectiveJudgment.document_link)}
-                  style={styles.docButton}
-                  testID="detail-open-judgment-doc-btn"
-                />
-              ) : (
-                <Text style={styles.docPendingText}>
-                  {t(
-                    'judgment.docPendingRegistry',
-                    'Official copy pending registry dispatch.'
-                  )}
-                </Text>
-              )}
+          {/* Case Title Banner */}
+          <Card style={styles.bannerCard}>
+            <View style={styles.headerRow}>
+              <Text style={styles.caseNumber}>
+                {formatCaseNumber(
+                  caseItem.case_type,
+                  caseItem.case_number,
+                  caseItem.filing_year
+                )}
+              </Text>
+              <Badge label={caseItem.status || caseItem.current_stage} variant="gold" />
             </View>
-          ) : (
-            <Text style={styles.emptyHearings}>
-              {t(
-                'judgment.noSummary',
-                'No judgment record has been pronounced yet for this court matter.'
-              )}
+
+            <Text style={styles.parties}>
+              {caseItem.petitioner}
+              {'\n'}
+              <Text style={styles.vsText}>VERSUS</Text>
+              {'\n'}
+              {caseItem.respondent}
             </Text>
-          )}
-        </Card>
 
-        {/* Docket Information */}
-        <Card style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>{t('cases.details')}</Text>
+            <View style={styles.bannerActionsRow}>
+              <Button
+                title="Listen to Case Summary"
+                variant="outline"
+                onPress={handleSpeakSummary}
+                style={styles.bannerActionBtn}
+                testID="speak-case-button"
+              />
+              <Button
+                title={
+                  isExportingPdf
+                    ? t('export.pdfExporting', 'Exporting PDF...')
+                    : t('export.exportPdf', 'Export Docket PDF')
+                }
+                variant="secondary"
+                onPress={handleExportPdf}
+                style={styles.bannerActionBtn}
+                disabled={isExportingPdf}
+                testID="export-case-pdf-button"
+              />
+            </View>
+          </Card>
 
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Filing Year</Text>
-            <Text style={styles.detailValue}>{caseItem.filing_year}</Text>
-          </View>
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Court Hall</Text>
-            <Text style={styles.detailValue}>
-              {caseItem.court_hall_number
-                ? `Hall ${caseItem.court_hall_number}`
-                : 'Not assigned'}
-            </Text>
-          </View>
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Bench</Text>
-            <Text style={styles.detailValue}>{caseItem.bench || 'Regular Bench'}</Text>
-          </View>
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Petitioner Advocate</Text>
-            <Text style={styles.detailValue}>{caseItem.petitioner_advocate || '—'}</Text>
-          </View>
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Respondent Advocate</Text>
-            <Text style={styles.detailValue}>{caseItem.respondent_advocate || '—'}</Text>
-          </View>
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Next Hearing Date</Text>
-            <Text style={[styles.detailValue, styles.highlightDate]}>
-              {formatDate(
-                caseItem.effective_next_hearing_date || caseItem.next_hearing_date
-              )}
-            </Text>
-          </View>
-        </Card>
+          {/* Tab Navigation Segmented Bar */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.tabBar}
+            testID="case-detail-tabs"
+          >
+            <TouchableOpacity
+              style={[
+                styles.tabButton,
+                activeTab === 'OVERVIEW' && styles.tabButtonActive,
+              ]}
+              onPress={() => setActiveTab('OVERVIEW')}
+              testID="tab-overview"
+              accessibilityRole="button"
+            >
+              <Text
+                style={[styles.tabText, activeTab === 'OVERVIEW' && styles.tabTextActive]}
+              >
+                {t('cases.details', 'Overview')}
+              </Text>
+            </TouchableOpacity>
 
-        {/* Hearing History */}
-        <Card style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>{t('cases.hearings')}</Text>
+            <TouchableOpacity
+              style={[
+                styles.tabButton,
+                activeTab === 'HEARINGS' && styles.tabButtonActive,
+              ]}
+              onPress={() => setActiveTab('HEARINGS')}
+              testID="tab-hearings"
+              accessibilityRole="button"
+            >
+              <Text
+                style={[styles.tabText, activeTab === 'HEARINGS' && styles.tabTextActive]}
+              >
+                {t('cases.hearings', 'Hearings & Timeline')}
+              </Text>
+            </TouchableOpacity>
 
-          {caseItem.hearings && caseItem.hearings.length > 0 ? (
-            caseItem.hearings.map((hearing: HearingItem) => (
-              <View key={hearing.id} style={styles.hearingItem}>
-                <View style={styles.hearingHeader}>
-                  <Text style={styles.hearingDate}>
-                    {formatDate(hearing.hearing_date)}
-                    {hearing.hearing_time ? ` • ${hearing.hearing_time}` : ''}
-                  </Text>
-                  <View style={styles.badgeGroup}>
-                    {hearing.status === 'RESCHEDULED' || hearing.is_rescheduled ? (
-                      <Badge label="Rescheduled" variant="warning" />
-                    ) : (
-                      <Badge
-                        label={
-                          hearing.item_number ? `Item #${hearing.item_number}` : 'Listed'
-                        }
-                        variant="primary"
-                      />
-                    )}
-                  </View>
+            <TouchableOpacity
+              style={[
+                styles.tabButton,
+                activeTab === 'DOCUMENTS' && styles.tabButtonActive,
+              ]}
+              onPress={() => setActiveTab('DOCUMENTS')}
+              testID="tab-documents"
+              accessibilityRole="button"
+            >
+              <Text
+                style={[
+                  styles.tabText,
+                  activeTab === 'DOCUMENTS' && styles.tabTextActive,
+                ]}
+              >
+                {t('documents.title', 'Documents')}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.tabButton, activeTab === 'NOTES' && styles.tabButtonActive]}
+              onPress={() => setActiveTab('NOTES')}
+              testID="tab-notes"
+              accessibilityRole="button"
+            >
+              <Text
+                style={[styles.tabText, activeTab === 'NOTES' && styles.tabTextActive]}
+              >
+                {t('notes.title', 'Private Notes')}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.tabButton,
+                activeTab === 'VOICE_NOTES' && styles.tabButtonActive,
+              ]}
+              onPress={() => setActiveTab('VOICE_NOTES')}
+              testID="tab-voice-notes"
+              accessibilityRole="button"
+            >
+              <Text
+                style={[
+                  styles.tabText,
+                  activeTab === 'VOICE_NOTES' && styles.tabTextActive,
+                ]}
+              >
+                {t('voiceNotes.title', 'Voice Notes')}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.tabButton,
+                activeTab === 'JUDGMENT' && styles.tabButtonActive,
+              ]}
+              onPress={() => setActiveTab('JUDGMENT')}
+              testID="tab-judgment"
+              accessibilityRole="button"
+            >
+              <Text
+                style={[styles.tabText, activeTab === 'JUDGMENT' && styles.tabTextActive]}
+              >
+                {t('judgment.title', 'Judgment')}
+              </Text>
+            </TouchableOpacity>
+          </ScrollView>
+
+          {activeTab === 'DOCUMENTS' && <CaseDocumentsSection caseId={caseItem.id} />}
+
+          {activeTab === 'NOTES' && <CaseNotesSection caseId={caseItem.id} />}
+
+          {activeTab === 'VOICE_NOTES' && <CaseVoiceNotesSection caseId={caseItem.id} />}
+
+          {activeTab === 'HEARINGS' && renderHearingsTimelineSection()}
+
+          {activeTab === 'JUDGMENT' && renderJudgmentSection()}
+
+          {activeTab === 'OVERVIEW' && (
+            <>
+              {/* Court Listing & Token Card */}
+              <CourtStatusCard
+                caseId={caseItem.id}
+                statusData={courtStatusData}
+                isLoading={isCourtStatusLoading}
+                isError={isCourtStatusError}
+                onSync={handleSyncCourtStatus}
+                isSyncing={isSyncing}
+                syncMessage={syncFeedback.message}
+                syncError={syncFeedback.error}
+              />
+
+              {/* Docket Information */}
+              <Card style={styles.sectionCard}>
+                <Text style={styles.sectionTitle}>{t('cases.details')}</Text>
+
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Filing Year</Text>
+                  <Text style={styles.detailValue}>{caseItem.filing_year}</Text>
                 </View>
-                {hearing.previous_hearing_date ? (
-                  <Text style={styles.hearingPrevDate}>
-                    🔄 Prior: {formatDate(hearing.previous_hearing_date)}{' '}
-                    {hearing.previous_hearing_time || ''}
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Court Hall</Text>
+                  <Text style={styles.detailValue}>
+                    {caseItem.court_hall_number
+                      ? `Hall ${caseItem.court_hall_number}`
+                      : 'Not assigned'}
                   </Text>
-                ) : null}
-                {hearing.business_conducted ? (
-                  <Text style={styles.hearingBusiness}>{hearing.business_conducted}</Text>
-                ) : null}
-                {hearing.next_date ? (
-                  <Text style={styles.hearingNextDate}>
-                    Next Date: {formatDate(hearing.next_date)}
+                </View>
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Bench</Text>
+                  <Text style={styles.detailValue}>
+                    {caseItem.bench || 'Regular Bench'}
                   </Text>
-                ) : null}
-                {hearing.status !== 'COMPLETED' && hearing.status !== 'CANCELLED' ? (
+                </View>
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Petitioner Advocate</Text>
+                  <Text style={styles.detailValue}>
+                    {caseItem.petitioner_advocate || '—'}
+                  </Text>
+                </View>
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Respondent Advocate</Text>
+                  <Text style={styles.detailValue}>
+                    {caseItem.respondent_advocate || '—'}
+                  </Text>
+                </View>
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Judgment Status</Text>
                   <TouchableOpacity
-                    style={styles.rescheduleLink}
-                    onPress={() =>
-                      setRescheduleHearing({
-                        ...hearing,
-                        case_details: {
-                          id: caseItem.id,
-                          case_type: caseItem.case_type,
-                          case_number: caseItem.case_number,
-                          filing_year: caseItem.filing_year,
-                          petitioner: caseItem.petitioner,
-                          respondent: caseItem.respondent,
-                          formatted_case_number: formatCaseNumber(
-                            caseItem.case_type,
-                            caseItem.case_number,
-                            caseItem.filing_year
-                          ),
-                        },
-                      })
-                    }
-                    testID={`reschedule-hearing-${hearing.id}`}
+                    onPress={() => setActiveTab('JUDGMENT')}
+                    accessibilityRole="button"
+                    testID="overview-judgment-link"
+                    style={styles.inlineTabJump}
                   >
-                    <Text style={styles.rescheduleLinkText}>
-                      📅 {t('hearings.rescheduleAction', 'Reschedule Appearance')}
+                    <Text
+                      style={[
+                        styles.detailValue,
+                        effectiveJudgment ? styles.highlightDate : undefined,
+                      ]}
+                    >
+                      {effectiveJudgment
+                        ? `Available (${formatDate(effectiveJudgment.judgment_date)})`
+                        : t('cases.judgmentPending', 'Pending')}
                     </Text>
+                    <AppIcon name="chevron-right" size={14} color={Colors.primary} />
                   </TouchableOpacity>
-                ) : null}
-              </View>
-            ))
-          ) : (
-            <Text style={styles.emptyHearings}>
-              No previous hearing records synced for this matter.
-            </Text>
+                </View>
+                <View style={[styles.detailRow, styles.detailRowLast]}>
+                  <Text style={styles.detailLabel}>Next Hearing Date</Text>
+                  <Text style={[styles.detailValue, styles.highlightDate]}>
+                    {formatDate(
+                      caseItem.effective_next_hearing_date || caseItem.next_hearing_date
+                    )}
+                  </Text>
+                </View>
+              </Card>
+
+              {renderHearingsTimelineSection()}
+            </>
           )}
-        </Card>
-
-        {/* Court Status History Timeline */}
-        <Card style={styles.sectionCard} testID="case-detail-court-status-history-card">
-          <CourtStatusTimeline
-            observations={courtHistoryData || []}
-            isLoading={isCourtHistoryLoading}
-            isError={isCourtHistoryError}
-            onRetry={refetchCourtHistory}
-          />
-        </Card>
-
-        {/* Case Audit Timeline */}
-        <Card style={styles.sectionCard} testID="case-detail-history-card">
-          <Text style={styles.sectionTitle}>
-            {t('history.title', 'Case Audit Timeline')}
-          </Text>
-          <CaseHistoryTimeline
-            history={historyData || []}
-            isLoading={isHistoryLoading}
-            isError={isHistoryError}
-            onRetry={refetchHistory}
-          />
-        </Card>
-        </>
-        )}
+        </View>
       </ScrollView>
 
       {/* Reschedule Hearing Modal */}
@@ -529,6 +682,7 @@ export default function CaseDetailScreen() {
         hearing={rescheduleHearing}
         onClose={() => setRescheduleHearing(null)}
         onSuccess={() => {
+          showToast('Hearing appearance rescheduled.', 'success');
           refetch();
           refetchHistory();
         }}
@@ -541,9 +695,48 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingBottom: 40,
   },
+  mainWrapper: {
+    width: '100%',
+    paddingHorizontal: Spacing.md,
+  },
+  desktopContainer: {
+    maxWidth: 1200,
+    alignSelf: 'center',
+    width: '100%',
+  },
+  loadingText: {
+    color: Colors.text.muted,
+    fontSize: 13,
+    textAlign: 'center',
+    marginTop: Spacing.sm,
+  },
+  topNavRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+    marginTop: 4,
+  },
+  backButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 44,
+    paddingHorizontal: 4,
+    gap: 6,
+  },
+  backButtonText: {
+    color: Colors.primary,
+    fontSize: 14,
+    fontWeight: '700',
+  },
   bannerCard: {
     padding: 18,
     marginBottom: 16,
+    borderRadius: Radius.card,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.surface,
+    ...Shadows.card,
   },
   headerRow: {
     flexDirection: 'row',
@@ -565,7 +758,7 @@ const styles = StyleSheet.create({
   },
   vsText: {
     color: Colors.gold,
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '800',
     letterSpacing: 1,
   },
@@ -576,23 +769,26 @@ const styles = StyleSheet.create({
   },
   bannerActionBtn: {
     flex: 1,
-    minHeight: 38,
+    minHeight: 44,
   },
   tabBar: {
     flexDirection: 'row',
     backgroundColor: Colors.surface,
-    marginHorizontal: 16,
     marginBottom: 16,
-    borderRadius: 10,
+    borderRadius: Radius.card,
     padding: 4,
     borderWidth: 1,
     borderColor: Colors.border,
+    gap: 4,
+    ...Shadows.subtle,
   },
   tabButton: {
-    flex: 1,
-    paddingVertical: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
     alignItems: 'center',
-    borderRadius: 8,
+    justifyContent: 'center',
+    borderRadius: Radius.badge + 2,
+    minHeight: 44,
   },
   tabButtonActive: {
     backgroundColor: Colors.primary,
@@ -605,12 +801,14 @@ const styles = StyleSheet.create({
   tabTextActive: {
     color: Colors.text.white,
   },
-  voiceButton: {
-    marginTop: 10,
-  },
   sectionCard: {
     padding: 18,
     marginBottom: 16,
+    borderRadius: Radius.card,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.surface,
+    ...Shadows.subtle,
   },
   sectionTitle: {
     color: Colors.text.primary,
@@ -628,6 +826,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
   },
+  detailRowLast: {
+    borderBottomWidth: 0,
+  },
   detailLabel: {
     color: Colors.text.secondary,
     fontSize: 13,
@@ -640,6 +841,12 @@ const styles = StyleSheet.create({
   highlightDate: {
     color: Colors.gold,
     fontWeight: '700',
+  },
+  inlineTabJump: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 2,
   },
   hearingItem: {
     paddingVertical: 10,
@@ -655,6 +862,17 @@ const styles = StyleSheet.create({
   hearingDate: {
     color: Colors.primaryLight,
     fontSize: 13,
+    fontWeight: '700',
+  },
+  hearingMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginBottom: 4,
+  },
+  hearingPrevDate: {
+    color: Colors.gold,
+    fontSize: 12,
     fontWeight: '700',
   },
   hearingBusiness: {
@@ -717,17 +935,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
   },
-  hearingPrevDate: {
-    color: Colors.gold,
-    fontSize: 11,
-    fontWeight: '700',
-    marginBottom: 4,
-  },
   rescheduleLink: {
-    marginTop: 8,
-    paddingVertical: 5,
-    paddingHorizontal: 8,
-    borderRadius: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    minHeight: 38,
+    borderRadius: 8,
     backgroundColor: Colors.surfaceSubtle,
     borderWidth: 1,
     borderColor: Colors.border,
@@ -735,7 +951,7 @@ const styles = StyleSheet.create({
   },
   rescheduleLinkText: {
     color: Colors.primaryLight,
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
   },
 });

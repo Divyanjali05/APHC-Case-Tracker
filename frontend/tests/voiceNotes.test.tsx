@@ -91,7 +91,8 @@ const mockVoiceNotes: VoiceNoteItem[] = [
     transcription_status_display: 'Transcribed',
     transcription_language: 'en',
     transcription_language_display: 'English',
-    original_transcript: 'May it please your Lordship, I appear on behalf of the petitioner.',
+    original_transcript:
+      'May it please your Lordship, I appear on behalf of the petitioner.',
     transcript: 'May it please your Lordship, I appear on behalf of the petitioner.',
     transcription_provider: 'MOCK_STT_PROVIDER',
     is_mock: true,
@@ -226,7 +227,9 @@ describe('Phase 5: Voice Notes, Speech-to-Text & Audio Playback', () => {
   it('allows entering note title in VoiceRecorderModal', () => {
     const onSave = jest.fn();
     const onClose = jest.fn();
-    render(<VoiceRecorderModal visible={true} onClose={onClose} onSave={onSave} caseId={101} />);
+    render(
+      <VoiceRecorderModal visible={true} onClose={onClose} onSave={onSave} caseId={101} />
+    );
 
     const titleInput = screen.getByTestId('voice-note-title-input');
     fireEvent.changeText(titleInput, 'Witness Examination Notes');
@@ -237,7 +240,9 @@ describe('Phase 5: Voice Notes, Speech-to-Text & Audio Playback', () => {
   it('allows selecting dictation language between EN, TE, HI', () => {
     const onSave = jest.fn();
     const onClose = jest.fn();
-    render(<VoiceRecorderModal visible={true} onClose={onClose} onSave={onSave} caseId={101} />);
+    render(
+      <VoiceRecorderModal visible={true} onClose={onClose} onSave={onSave} caseId={101} />
+    );
 
     fireEvent.press(screen.getByTestId('lang-te-button'));
     fireEvent.press(screen.getByTestId('lang-hi-button'));
@@ -246,9 +251,15 @@ describe('Phase 5: Voice Notes, Speech-to-Text & Audio Playback', () => {
 
   // 6 & 7. Record, pause, resume, stop timer lifecycle
   it('starts recording, allows pause and resume, and stops recording', async () => {
-    const startSpy = jest.spyOn(audioService, 'startRecording').mockResolvedValue(undefined);
-    const pauseSpy = jest.spyOn(audioService, 'pauseRecording').mockResolvedValue(undefined);
-    const resumeSpy = jest.spyOn(audioService, 'resumeRecording').mockResolvedValue(undefined);
+    const startSpy = jest
+      .spyOn(audioService, 'startRecording')
+      .mockResolvedValue(undefined);
+    const pauseSpy = jest
+      .spyOn(audioService, 'pauseRecording')
+      .mockResolvedValue(undefined);
+    const resumeSpy = jest
+      .spyOn(audioService, 'resumeRecording')
+      .mockResolvedValue(undefined);
     const stopSpy = jest.spyOn(audioService, 'stopRecording').mockResolvedValue({
       uri: 'file:///data/recording_test.m4a',
       durationSeconds: 15,
@@ -258,7 +269,9 @@ describe('Phase 5: Voice Notes, Speech-to-Text & Audio Playback', () => {
 
     const onSave = jest.fn();
     const onClose = jest.fn();
-    render(<VoiceRecorderModal visible={true} onClose={onClose} onSave={onSave} caseId={101} />);
+    render(
+      <VoiceRecorderModal visible={true} onClose={onClose} onSave={onSave} caseId={101} />
+    );
 
     // 1. Start recording
     await act(async () => {
@@ -293,7 +306,9 @@ describe('Phase 5: Voice Notes, Speech-to-Text & Audio Playback', () => {
   // 8 & 9. Preview playback
   it('toggles playback preview on recorded audio', async () => {
     const playSpy = jest.spyOn(audioService, 'playAudio').mockResolvedValue(undefined);
-    const stopAudioSpy = jest.spyOn(audioService, 'stopAudio').mockResolvedValue(undefined);
+    const stopAudioSpy = jest
+      .spyOn(audioService, 'stopAudio')
+      .mockResolvedValue(undefined);
     jest.spyOn(audioService, 'stopRecording').mockResolvedValue({
       uri: 'file:///data/recording_preview.m4a',
       durationSeconds: 20,
@@ -303,7 +318,9 @@ describe('Phase 5: Voice Notes, Speech-to-Text & Audio Playback', () => {
 
     const onSave = jest.fn();
     const onClose = jest.fn();
-    render(<VoiceRecorderModal visible={true} onClose={onClose} onSave={onSave} caseId={101} />);
+    render(
+      <VoiceRecorderModal visible={true} onClose={onClose} onSave={onSave} caseId={101} />
+    );
 
     await act(async () => {
       fireEvent.press(screen.getByTestId('record-button'));
@@ -316,7 +333,11 @@ describe('Phase 5: Voice Notes, Speech-to-Text & Audio Playback', () => {
     await act(async () => {
       fireEvent.press(screen.getByTestId('preview-play-button'));
     });
-    expect(playSpy).toHaveBeenCalledWith('file:///data/recording_preview.m4a', 20, expect.any(Function));
+    expect(playSpy).toHaveBeenCalledWith(
+      'file:///data/recording_preview.m4a',
+      20,
+      expect.any(Function)
+    );
 
     // Stop preview
     await act(async () => {
@@ -336,9 +357,14 @@ describe('Phase 5: Voice Notes, Speech-to-Text & Audio Playback', () => {
 
     const onSave = jest.fn().mockResolvedValue(undefined);
     const onClose = jest.fn();
-    render(<VoiceRecorderModal visible={true} onClose={onClose} onSave={onSave} caseId={101} />);
+    render(
+      <VoiceRecorderModal visible={true} onClose={onClose} onSave={onSave} caseId={101} />
+    );
 
-    fireEvent.changeText(screen.getByTestId('voice-note-title-input'), 'Arguments for Bail');
+    fireEvent.changeText(
+      screen.getByTestId('voice-note-title-input'),
+      'Arguments for Bail'
+    );
     await act(async () => {
       fireEvent.press(screen.getByTestId('record-button'));
     });
@@ -378,7 +404,14 @@ describe('Phase 5: Voice Notes, Speech-to-Text & Audio Playback', () => {
 
   // 12. DEMO Badge
   it('prominently displays DEMO badge when is_mock is true', () => {
-    render(<VoiceNoteCard note={mockVoiceNotes[0]} onUpdate={jest.fn()} onDelete={jest.fn()} onRetrySTT={jest.fn()} />);
+    render(
+      <VoiceNoteCard
+        note={mockVoiceNotes[0]}
+        onUpdate={jest.fn()}
+        onDelete={jest.fn()}
+        onRetrySTT={jest.fn()}
+      />
+    );
 
     expect(screen.getByTestId('mock-badge-1')).toBeTruthy();
     expect(screen.getByText('DEMO')).toBeTruthy();
@@ -411,7 +444,11 @@ describe('Phase 5: Voice Notes, Speech-to-Text & Audio Playback', () => {
     await act(async () => {
       fireEvent.press(playBtn);
     });
-    expect(playSpy).toHaveBeenCalledWith('/api/voice/notes/1/audio/', 45.5, expect.any(Function));
+    expect(playSpy).toHaveBeenCalledWith(
+      '/api/voice/notes/1/audio/',
+      45.5,
+      expect.any(Function)
+    );
 
     await act(async () => {
       fireEvent.press(playBtn);
@@ -488,7 +525,9 @@ describe('Phase 5: Voice Notes, Speech-to-Text & Audio Playback', () => {
     );
 
     // Simulate clicking delete in alert buttons
-    const deleteButtonAction = alertSpy.mock.calls[0][2]?.find((btn) => btn.style === 'destructive');
+    const deleteButtonAction = alertSpy.mock.calls[0][2]?.find(
+      btn => btn.style === 'destructive'
+    );
     if (deleteButtonAction?.onPress) {
       await act(async () => {
         await deleteButtonAction.onPress!();

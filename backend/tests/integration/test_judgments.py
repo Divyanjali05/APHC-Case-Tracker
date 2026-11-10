@@ -81,7 +81,7 @@ def sample_judgment(db, advocate_case):
         order_number="WP-4501-2024-ORD-01",
         bench="Hon'ble Chief Justice Bench",
         summary="Writ petition allowed with directions to implement pay commission revisions.",
-        document_link="https://court-documents.example.com/judgments/WP4501_2024.pdf",
+        document_link="https://aphc.gov.in/judgments/WP4501_2024.pdf",
     )
 
 

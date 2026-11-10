@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import * as SecureStore from 'expo-secure-store';
+import Constants from 'expo-constants';
 import { apiClient } from '../services/api/client';
 import {
   pushNotificationService,
@@ -36,13 +37,33 @@ jest.mock('expo-notifications', () => ({
   setNotificationChannelAsync: jest.fn().mockResolvedValue(null),
   getPermissionsAsync: jest.fn().mockResolvedValue({ status: 'granted' }),
   requestPermissionsAsync: jest.fn().mockResolvedValue({ status: 'granted' }),
-  getExpoPushTokenAsync: jest.fn().mockResolvedValue({ data: 'ExponentPushToken[Test_Client_Device_Token]' }),
+  getExpoPushTokenAsync: jest
+    .fn()
+    .mockResolvedValue({ data: 'ExponentPushToken[Test_Client_Device_Token]' }),
   addNotificationReceivedListener: jest.fn().mockReturnValue({ remove: jest.fn() }),
-  addNotificationResponseReceivedListener: jest.fn().mockReturnValue({ remove: jest.fn() }),
+  addNotificationResponseReceivedListener: jest
+    .fn()
+    .mockReturnValue({ remove: jest.fn() }),
   AndroidImportance: {
     MAX: 5,
     HIGH: 4,
     DEFAULT: 3,
+  },
+}));
+
+jest.mock('expo-constants', () => ({
+  __esModule: true,
+  default: {
+    expoConfig: {
+      extra: {
+        eas: {
+          projectId: 'test-eas-project-id-1234',
+        },
+      },
+    },
+    easConfig: {
+      projectId: 'test-eas-project-id-1234',
+    },
   },
 }));
 
@@ -88,11 +109,25 @@ const mockNotifications: NotificationItem[] = [
 describe('Phase 7: Push Notifications, Device Management & Notification Center', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    (Notifications.getPermissionsAsync as jest.Mock).mockResolvedValue({ status: 'granted' });
-    (Notifications.requestPermissionsAsync as jest.Mock).mockResolvedValue({ status: 'granted' });
+    (Notifications.getPermissionsAsync as jest.Mock).mockResolvedValue({
+      status: 'granted',
+    });
+    (Notifications.requestPermissionsAsync as jest.Mock).mockResolvedValue({
+      status: 'granted',
+    });
     (Notifications.getExpoPushTokenAsync as jest.Mock).mockResolvedValue({
       data: 'ExponentPushToken[Test_Client_Device_Token]',
     });
+    (Constants as unknown as { expoConfig: unknown; easConfig: unknown }).expoConfig = {
+      extra: {
+        eas: {
+          projectId: 'test-eas-project-id-1234',
+        },
+      },
+    };
+    (Constants as unknown as { expoConfig: unknown; easConfig: unknown }).easConfig = {
+      projectId: 'test-eas-project-id-1234',
+    };
   });
 
   // 1. Android Notification Channel Setup
@@ -116,11 +151,16 @@ describe('Phase 7: Push Notifications, Device Management & Notification Center',
   it('2. requests permissions, retrieves Expo push token, and registers device payload with backend', async () => {
     Platform.OS = 'android';
     jest.spyOn(SecureStore, 'getItemAsync').mockResolvedValue('device-hardware-uuid-123');
-    const apiPostSpy = jest.spyOn(apiClient, 'post').mockResolvedValue({ data: { is_active: true } } as unknown as AxiosResponse);
+    const apiPostSpy = jest
+      .spyOn(apiClient, 'post')
+      .mockResolvedValue({ data: { is_active: true } } as unknown as AxiosResponse);
 
     const token = await pushNotificationService.registerForPushNotifications();
 
     expect(token).toBe('ExponentPushToken[Test_Client_Device_Token]');
+    expect(Notifications.getExpoPushTokenAsync).toHaveBeenCalledWith({
+      projectId: 'test-eas-project-id-1234',
+    });
     expect(apiPostSpy).toHaveBeenCalledWith(
       '/notifications/devices/',
       expect.objectContaining({
@@ -131,11 +171,37 @@ describe('Phase 7: Push Notifications, Device Management & Notification Center',
     );
   });
 
+  // 2b. Graceful skipping when EAS projectId is missing
+  it('2b. returns null without throwing or registering when EAS projectId is missing', async () => {
+    Platform.OS = 'android';
+    (Constants as unknown as { expoConfig: unknown; easConfig: unknown }).expoConfig = {
+      extra: { eas: {} },
+    };
+    (Constants as unknown as { expoConfig: unknown; easConfig: unknown }).easConfig = {};
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const apiPostSpy = jest.spyOn(apiClient, 'post');
+
+    const token = await pushNotificationService.registerForPushNotifications();
+
+    expect(token).toBeNull();
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('[pushService] EAS projectId is not configured')
+    );
+    expect(Notifications.getExpoPushTokenAsync).not.toHaveBeenCalled();
+    expect(apiPostSpy).not.toHaveBeenCalled();
+
+    warnSpy.mockRestore();
+  });
+
   // 3. Permission Denied Graceful Handling
   it('3. returns null without registering if notification permissions are denied', async () => {
     Platform.OS = 'android';
-    (Notifications.getPermissionsAsync as jest.Mock).mockResolvedValue({ status: 'denied' });
-    (Notifications.requestPermissionsAsync as jest.Mock).mockResolvedValue({ status: 'denied' });
+    (Notifications.getPermissionsAsync as jest.Mock).mockResolvedValue({
+      status: 'denied',
+    });
+    (Notifications.requestPermissionsAsync as jest.Mock).mockResolvedValue({
+      status: 'denied',
+    });
     const apiPostSpy = jest.spyOn(apiClient, 'post');
 
     const token = await pushNotificationService.registerForPushNotifications();
@@ -154,12 +220,15 @@ describe('Phase 7: Push Notifications, Device Management & Notification Center',
   // 5. Deactivation on Logout
   it('5. deactivates push token with backend on logout and removes local stored token', async () => {
     jest.spyOn(SecureStore, 'getItemAsync').mockImplementation(async key => {
-      if (key === 'aphc_registered_push_token') return 'ExponentPushToken[LoggedOutToken]';
+      if (key === 'aphc_registered_push_token')
+        return 'ExponentPushToken[LoggedOutToken]';
       if (key === 'aphc_device_identifier') return 'device-uuid-999';
       return null;
     });
     const deleteSpy = jest.spyOn(SecureStore, 'deleteItemAsync').mockResolvedValue();
-    const apiPostSpy = jest.spyOn(apiClient, 'post').mockResolvedValue({ data: { deactivated_count: 1 } } as unknown as AxiosResponse);
+    const apiPostSpy = jest
+      .spyOn(apiClient, 'post')
+      .mockResolvedValue({ data: { deactivated_count: 1 } } as unknown as AxiosResponse);
 
     const success = await pushNotificationService.deactivatePushNotifications();
 
@@ -180,19 +249,25 @@ describe('Phase 7: Push Notifications, Device Management & Notification Center',
 
   // 7. Navigation Route Resolution: Token Alerts
   it('7. resolves deep link to /(tabs)/tokens for token alert notifications', () => {
-    const route = pushNotificationService.resolveNavigationRoute({ category: 'TOKEN_CALLED' });
+    const route = pushNotificationService.resolveNavigationRoute({
+      category: 'TOKEN_CALLED',
+    });
     expect(route.pathname).toBe('/(tabs)/tokens');
   });
 
   // 8. Navigation Route Resolution: Calendar Reminders
   it('8. resolves deep link to /(tabs)/calendar for calendar agenda and deadlines', () => {
-    const route = pushNotificationService.resolveNavigationRoute({ category: 'COMPLIANCE_DEADLINE' });
+    const route = pushNotificationService.resolveNavigationRoute({
+      category: 'COMPLIANCE_DEADLINE',
+    });
     expect(route.pathname).toBe('/(tabs)/calendar');
   });
 
   // 9. Navigation Route Resolution: Hearing Reminders
   it('9. resolves deep link to /(tabs)/reminders for hearing reminder notifications', () => {
-    const route = pushNotificationService.resolveNavigationRoute({ category: 'HEARING_REMINDER' });
+    const route = pushNotificationService.resolveNavigationRoute({
+      category: 'HEARING_REMINDER',
+    });
     expect(route.pathname).toBe('/(tabs)/reminders');
   });
 
@@ -207,7 +282,9 @@ describe('Phase 7: Push Notifications, Device Management & Notification Center',
   it('11. registers background/tap notification response listener correctly', () => {
     const cb = jest.fn();
     pushNotificationService.addNotificationResponseListener(cb);
-    expect(Notifications.addNotificationResponseReceivedListener).toHaveBeenCalledWith(cb);
+    expect(Notifications.addNotificationResponseReceivedListener).toHaveBeenCalledWith(
+      cb
+    );
   });
 
   // 12. NotificationCard Category Badges

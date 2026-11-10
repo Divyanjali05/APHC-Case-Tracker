@@ -7,7 +7,7 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from apps.cases.models import Case, Hearing, Judgment
+from apps.cases.models import Case, CaseHistory, Hearing, Judgment
 from apps.court_data.models import CourtListing
 from apps.notifications.models import NotificationHistory
 from apps.reminders.models import Reminder
@@ -67,6 +67,7 @@ class TestDashboardEndpoint:
         assert data["upcoming_hearings"] == []
         assert data["upcoming_reminders"] == []
         assert data["recent_notifications"] == []
+        assert data["recent_activity"] == []
         assert data["sync_status"]["last_synced_at"] is None
         assert data["sync_status"]["is_fresh"] is False
         assert data["sync_status"]["status"] == "NEVER_SYNCED"
@@ -355,3 +356,44 @@ class TestDashboardEndpoint:
         assert res_b.data["upcoming_reminders"][0]["title"] == "Advocate B Reminder"
         assert len(res_b.data["recent_notifications"]) == 1
         assert res_b.data["recent_notifications"][0]["title"] == "Advocate B Notification"
+
+    def test_dashboard_recent_activity_scoped_to_user_cases(
+        self, api_client, advocate_a, advocate_b
+    ):
+        """Dashboard recent_activity shows tracked-case timeline and omits other advocates' cases."""
+        case_a = Case.objects.create(
+            case_type="WP",
+            case_number="501",
+            filing_year=2025,
+            petitioner="Client Alpha",
+            respondent="State",
+        )
+        case_a.tracked_by.add(advocate_a)
+        CaseHistory.objects.create(
+            case=case_a,
+            event_type="CASE_CREATED",
+            description="Case WP 501/2025 registered for Advocate A",
+            changed_by=advocate_a,
+        )
+
+        case_b = Case.objects.create(
+            case_type="WA",
+            case_number="502",
+            filing_year=2025,
+            petitioner="Client Beta",
+            respondent="State",
+        )
+        case_b.tracked_by.add(advocate_b)
+        CaseHistory.objects.create(
+            case=case_b,
+            event_type="CASE_CREATED",
+            description="Private activity for Advocate B",
+            changed_by=advocate_b,
+        )
+
+        api_client.force_authenticate(user=advocate_a)
+        res_a = api_client.get(reverse("cases:dashboard"))
+        assert res_a.status_code == status.HTTP_200_OK
+        assert len(res_a.data["recent_activity"]) == 1
+        assert res_a.data["recent_activity"][0]["case_number"] == "WP 501/2025"
+        assert "Advocate B" not in str(res_a.data["recent_activity"])

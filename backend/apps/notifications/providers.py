@@ -278,4 +278,3 @@ def get_push_provider() -> PushNotificationProvider:
     if provider_name == "fcm":
         return FCMv1Provider()
     return MockPushNotificationProvider()
-

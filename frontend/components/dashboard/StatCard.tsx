@@ -1,7 +1,15 @@
 import React from 'react';
-import { Text, StyleSheet, TouchableOpacity } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  StyleProp,
+  ViewStyle,
+} from 'react-native';
 import { Card } from '../common/Card';
 import { Colors } from '../../constants/colors';
+import { Radius, Shadows, Spacing } from '../../constants/theme';
 
 export interface StatCardProps {
   title: string;
@@ -10,6 +18,9 @@ export interface StatCardProps {
   valueColor?: string;
   testID?: string;
   onPress?: () => void;
+  icon?: React.ReactNode;
+  iconBgColor?: string;
+  style?: StyleProp<ViewStyle>;
 }
 
 export const StatCard: React.FC<StatCardProps> = ({
@@ -19,12 +30,27 @@ export const StatCard: React.FC<StatCardProps> = ({
   valueColor,
   testID,
   onPress,
+  icon,
+  iconBgColor,
+  style,
 }) => {
   const content = (
-    <Card style={styles.card} testID={testID}>
-      <Text style={styles.title} numberOfLines={1}>
-        {title}
-      </Text>
+    <Card style={[styles.card, style]} testID={testID}>
+      <View style={styles.headerRow}>
+        <Text style={styles.title} numberOfLines={1}>
+          {title}
+        </Text>
+        {icon ? (
+          <View
+            style={[
+              styles.iconWrapper,
+              iconBgColor ? { backgroundColor: iconBgColor } : undefined,
+            ]}
+          >
+            {icon}
+          </View>
+        ) : null}
+      </View>
       <Text
         style={[styles.value, valueColor ? { color: valueColor } : undefined]}
         testID={testID ? `${testID}-value` : undefined}
@@ -41,7 +67,13 @@ export const StatCard: React.FC<StatCardProps> = ({
 
   if (onPress) {
     return (
-      <TouchableOpacity activeOpacity={0.7} onPress={onPress} style={styles.touchable}>
+      <TouchableOpacity
+        activeOpacity={0.7}
+        onPress={onPress}
+        style={styles.touchable}
+        accessibilityRole="button"
+        accessibilityLabel={`${title}: ${value}`}
+      >
         {content}
       </TouchableOpacity>
     );
@@ -58,23 +90,44 @@ const styles = StyleSheet.create({
   card: {
     flex: 1,
     minWidth: 140,
-    marginHorizontal: 4,
-    padding: 16,
+    padding: Spacing.lg,
+    backgroundColor: Colors.surface,
+    borderColor: Colors.border,
+    borderWidth: 1,
+    borderRadius: Radius.card,
+    ...Shadows.subtle,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.sm,
   },
   title: {
     color: Colors.text.secondary,
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '600',
-    marginBottom: 6,
+    flex: 1,
+    letterSpacing: 0.2,
+  },
+  iconWrapper: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.surfaceSubtle,
+    marginLeft: Spacing.xs,
   },
   value: {
     color: Colors.text.primary,
-    fontSize: 24,
+    fontSize: 26,
     fontWeight: '800',
     marginBottom: 4,
   },
   subtitle: {
     color: Colors.text.muted,
-    fontSize: 11,
+    fontSize: 12,
+    fontWeight: '500',
   },
 });

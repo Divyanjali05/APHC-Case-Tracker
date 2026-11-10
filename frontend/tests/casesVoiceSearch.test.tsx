@@ -23,7 +23,12 @@ jest.mock('../features/cases/hooks', () => ({
   useCases: jest.fn(),
   useDashboard: jest.fn().mockReturnValue({
     data: {
-      summary: { total_cases: 0, pending_cases: 0, disposed_cases: 0, adjourned_cases: 0 },
+      summary: {
+        total_cases: 0,
+        pending_cases: 0,
+        disposed_cases: 0,
+        adjourned_cases: 0,
+      },
       today_hearings: [],
       upcoming_hearings: [],
       upcoming_reminders: [],

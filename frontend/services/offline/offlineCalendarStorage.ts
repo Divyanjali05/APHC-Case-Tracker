@@ -27,7 +27,11 @@ export const offlineCalendarStorage = {
   /**
    * Save agenda data encrypted for offline calendar inspection.
    */
-  async cacheAgenda(userKey: string, dateKey: string, agenda: AgendaResponse): Promise<void> {
+  async cacheAgenda(
+    userKey: string,
+    dateKey: string,
+    agenda: AgendaResponse
+  ): Promise<void> {
     try {
       const key = getCacheKey(userKey, dateKey);
       const json = JSON.stringify(agenda);
@@ -41,7 +45,10 @@ export const offlineCalendarStorage = {
   /**
    * Retrieve encrypted cached agenda data when offline or server unreachable.
    */
-  async getCachedAgenda(userKey: string, dateKey: string): Promise<AgendaResponse | null> {
+  async getCachedAgenda(
+    userKey: string,
+    dateKey: string
+  ): Promise<AgendaResponse | null> {
     try {
       const key = getCacheKey(userKey, dateKey);
       const raw = await AsyncStorage.getItem(key);
@@ -95,7 +102,7 @@ export const offlineCalendarStorage = {
    */
   async removeOfflineReminder(userKey: string, id: string): Promise<void> {
     const queue = await this.getOfflineReminders(userKey);
-    const filtered = queue.filter((item) => item.id !== id);
+    const filtered = queue.filter(item => item.id !== id);
     await this.saveQueue(userKey, filtered);
   },
 
@@ -113,4 +120,3 @@ export const offlineCalendarStorage = {
     }
   },
 };
-

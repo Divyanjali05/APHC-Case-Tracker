@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Card } from '../common/Card';
 import { Badge } from '../common/Badge';
+import { AppIcon } from '../common/AppIcon';
 import { Colors } from '../../constants/colors';
 import { ReminderItem as ReminderType } from '../../types';
 import { formatDate } from '../../utils/formatters';
@@ -70,7 +71,8 @@ export const ReminderItemComponent: React.FC<ReminderItemProps> = ({
             onPress={() => onDismiss(item.id)}
             testID={`reminder-dismiss-btn-${item.id}`}
           >
-            <Text style={styles.dismissBtnText}>✓ Mark Done</Text>
+            <AppIcon name="check" size={14} color={Colors.success} />
+            <Text style={styles.dismissBtnText}>Mark Done</Text>
           </TouchableOpacity>
         ) : null}
       </View>
@@ -80,8 +82,12 @@ export const ReminderItemComponent: React.FC<ReminderItemProps> = ({
 
 const styles = StyleSheet.create({
   card: {
-    padding: 14,
-    marginBottom: 10,
+    padding: 16,
+    marginBottom: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.surface,
   },
   header: {
     flexDirection: 'row',
@@ -113,24 +119,28 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 4,
+    marginTop: 6,
   },
   date: {
-    color: Colors.primaryLight,
+    color: Colors.primary,
     fontSize: 12,
     fontWeight: '600',
   },
   dismissBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    backgroundColor: Colors.surfaceSubtle,
-    borderRadius: 6,
+    flexDirection: 'row',
+    gap: 5,
+    paddingHorizontal: 14,
+    minHeight: 48,
+    backgroundColor: Colors.successSurface,
+    borderRadius: 8,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: Colors.successBorder,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   dismissBtnText: {
     color: Colors.success,
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
   },
 });

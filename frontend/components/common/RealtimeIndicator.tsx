@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import { Colors } from '../../constants/colors';
 import { useRealtimeStatus } from '../../features/realtime/hooks';
 import { RealtimeConnectionStatus } from '../../features/realtime/types';
 
@@ -17,16 +18,29 @@ export const RealtimeIndicator: React.FC<RealtimeIndicatorProps> = ({
   const currentStatus = useRealtimeStatus();
   const effectiveStatus = propStatus || currentStatus;
 
-  const getStatusColor = () => {
+  const getDotColor = () => {
     switch (effectiveStatus) {
       case 'CONNECTED':
-        return '#10B981'; // Emerald Green
+        return '#10B981';
       case 'CONNECTING':
       case 'RECONNECTING':
-        return '#F59E0B'; // Amber
+        return '#F59E0B';
       case 'OFFLINE':
       default:
-        return '#6B7280'; // Slate Gray
+        return Colors.text.muted;
+    }
+  };
+
+  const getTextColor = () => {
+    switch (effectiveStatus) {
+      case 'CONNECTED':
+        return Colors.success;
+      case 'CONNECTING':
+      case 'RECONNECTING':
+        return Colors.warning;
+      case 'OFFLINE':
+      default:
+        return Colors.text.secondary;
     }
   };
 
@@ -47,12 +61,12 @@ export const RealtimeIndicator: React.FC<RealtimeIndicatorProps> = ({
   return (
     <View style={styles.container} testID={testID}>
       <View
-        style={[styles.dot, { backgroundColor: getStatusColor() }]}
+        style={[styles.dot, { backgroundColor: getDotColor() }]}
         testID={`${testID}-dot`}
       />
       {showLabel && (
         <Text
-          style={[styles.label, { color: getStatusColor() }]}
+          style={[styles.label, { color: getTextColor() }]}
           testID={`${testID}-label`}
         >
           {getStatusLabel()}
@@ -67,10 +81,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    paddingVertical: 2,
-    paddingHorizontal: 6,
+    paddingVertical: 4,
+    paddingHorizontal: 9,
     borderRadius: 12,
-    backgroundColor: 'rgba(15, 23, 42, 0.6)',
+    backgroundColor: Colors.surfaceSubtle,
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
   dot: {
     width: 7,
@@ -78,8 +94,8 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   label: {
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: '600',
-    letterSpacing: 0.3,
+    letterSpacing: 0.2,
   },
 });

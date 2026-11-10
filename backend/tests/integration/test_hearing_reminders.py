@@ -20,6 +20,13 @@ from apps.reminders.tasks import check_and_send_due_reminders
 User = get_user_model()
 
 
+def _non_monday_date(base_date, days_ahead: int):
+    target = base_date + timedelta(days=days_ahead)
+    if target.weekday() == 0:  # Monday triggers extra 72h Friday reminder
+        target += timedelta(days=1)
+    return target
+
+
 @pytest.fixture
 def advocate(db):
     user = User.objects.create_user(
@@ -137,7 +144,7 @@ class TestHearingRemindersAndRescheduling:
     def test_reminder_scheduling_intervals(self, advocate, advocate_case):
         """2. Automatic reminder creation with 24h and 1h intervals."""
         today = timezone.now().date()
-        hearing_date = today + timedelta(days=4)
+        hearing_date = _non_monday_date(today, 4)
         hearing = Hearing.objects.create(
             case=advocate_case,
             hearing_date=hearing_date,
@@ -163,7 +170,7 @@ class TestHearingRemindersAndRescheduling:
     def test_duplicate_reminder_prevention(self, advocate, advocate_case):
         """3. Idempotent scheduling prevents duplicate reminders for same hearing/interval."""
         today = timezone.now().date()
-        hearing_date = today + timedelta(days=3)
+        hearing_date = _non_monday_date(today, 3)
         hearing = Hearing.objects.create(
             case=advocate_case,
             hearing_date=hearing_date,
@@ -189,7 +196,7 @@ class TestHearingRemindersAndRescheduling:
         pref.save()
 
         today = timezone.now().date()
-        hearing_date = today + timedelta(days=3)
+        hearing_date = _non_monday_date(today, 3)
         hearing = Hearing.objects.create(
             case=advocate_case,
             hearing_date=hearing_date,
@@ -204,8 +211,10 @@ class TestHearingRemindersAndRescheduling:
     def test_hearing_rescheduling_workflow(self, auth_client, advocate, advocate_case):
         """5. Reschedule hearing: preserves prior values, updates case, cancels old reminders, records audit history."""
         today = timezone.now().date()
-        orig_date = today + timedelta(days=2)
-        new_date = today + timedelta(days=6)
+        orig_date = _non_monday_date(today, 2)
+        new_date = _non_monday_date(today, 6)
+        if new_date == orig_date:
+            new_date += timedelta(days=1)
 
         hearing = Hearing.objects.create(
             case=advocate_case,
@@ -619,8 +628,8 @@ class TestHearingRemindersAndRescheduling:
     ):
         """18. Hearing with previously SENT reminder schedules fresh reminders for the new hearing date."""
         today = timezone.now().date()
-        orig_date = today + timedelta(days=1)
-        new_date = today + timedelta(days=7)
+        orig_date = _non_monday_date(today, 1)
+        new_date = _non_monday_date(today, 7)
 
         hearing = Hearing.objects.create(
             case=advocate_case,

@@ -34,7 +34,7 @@ def send_push_notification_task(
             self.request.retries + 1,
             self.max_retries,
         )
-        countdown = 2 ** self.request.retries * 5
+        countdown = 2**self.request.retries * 5
         raise self.retry(exc=exc, countdown=countdown) from exc
 
 

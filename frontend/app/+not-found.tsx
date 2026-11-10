@@ -2,19 +2,30 @@ import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Link, Stack } from 'expo-router';
 import { ScreenContainer } from '../components/common/ScreenContainer';
+import { Card } from '../components/common/Card';
+import { AppIcon } from '../components/common/AppIcon';
 import { Colors } from '../constants/colors';
+import { Radius, Shadows, Spacing } from '../constants/theme';
 
 export default function NotFoundScreen() {
   return (
     <>
       <Stack.Screen options={{ title: 'Page Not Found' }} />
-      <ScreenContainer>
+      <ScreenContainer testID="not-found-screen">
         <View style={styles.container}>
-          <Text style={styles.title}>404</Text>
-          <Text style={styles.subtitle}>This court docket or page does not exist.</Text>
-          <Link href="/(tabs)" style={styles.link}>
-            <Text style={styles.linkText}>Return to Dashboard</Text>
-          </Link>
+          <Card style={styles.card}>
+            <View style={styles.iconBadge}>
+              <AppIcon name="scale" size={30} color={Colors.primary} />
+            </View>
+            <Text style={styles.code}>404</Text>
+            <Text style={styles.title}>Page Not Found</Text>
+            <Text style={styles.subtitle}>
+              This court docket or route does not exist or is no longer available.
+            </Text>
+            <Link href="/" style={styles.link} testID="not-found-home-link">
+              <Text style={styles.linkText}>Return Home</Text>
+            </Link>
+          </Card>
         </View>
       </ScreenContainer>
     </>
@@ -26,30 +37,57 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 20,
+    padding: Spacing.lg,
+  },
+  card: {
+    width: '100%',
+    maxWidth: 400,
+    alignItems: 'center',
+    padding: Spacing.xl,
+    borderRadius: Radius.card,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.surface,
+    ...Shadows.card,
+  },
+  iconBadge: {
+    width: 60,
+    height: 60,
+    borderRadius: 16,
+    backgroundColor: Colors.surfaceBlue,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.md,
+  },
+  code: {
+    fontSize: 44,
+    fontWeight: '800',
+    color: Colors.gold,
+    letterSpacing: -0.5,
+    marginBottom: Spacing.xs,
   },
   title: {
-    fontSize: 52,
-    fontWeight: '900',
-    color: Colors.gold,
-    marginBottom: 8,
+    fontSize: 18,
+    fontWeight: '700',
+    color: Colors.text.primary,
+    marginBottom: Spacing.xs,
   },
   subtitle: {
-    fontSize: 15,
+    fontSize: 14,
+    lineHeight: 20,
     color: Colors.text.secondary,
-    marginBottom: 24,
+    marginBottom: Spacing.xl,
     textAlign: 'center',
   },
   link: {
-    backgroundColor: Colors.surface,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    backgroundColor: Colors.primary,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.xl,
+    borderRadius: Radius.button,
+    minHeight: 48,
   },
   linkText: {
-    color: Colors.primaryLight,
+    color: Colors.text.white,
     fontSize: 15,
     fontWeight: '700',
   },

@@ -3,6 +3,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import { Card } from '../common/Card';
 import { Badge } from '../common/Badge';
 import { Button } from '../common/Button';
+import { AppIcon } from '../common/AppIcon';
 import { Colors } from '../../constants/colors';
 import { TokenAlertRuleItem, TokenAlertStatus } from '../../types';
 
@@ -42,8 +43,7 @@ export const TokenAlertCard: React.FC<TokenAlertCardProps> = ({
   const hallNumber = item.court_hall_details?.hall_number || item.court_hall;
   const bench = item.bench_name || item.court_hall_details?.bench_name || 'AP High Court';
   const caseNumber =
-    item.case_details?.formatted_case_number ||
-    (item.case ? `Case #${item.case}` : '—');
+    item.case_details?.formatted_case_number || (item.case ? `Case #${item.case}` : '—');
   const parties =
     item.case_details?.petitioner && item.case_details?.respondent
       ? `${item.case_details.petitioner} v. ${item.case_details.respondent}`
@@ -111,11 +111,7 @@ export const TokenAlertCard: React.FC<TokenAlertCardProps> = ({
               item.status === 'CALLED' ? styles.calledText : undefined,
             ]}
           >
-            {item.status === 'CALLED'
-              ? 'CALLED'
-              : remaining <= 0
-                ? '0'
-                : `${remaining}`}
+            {item.status === 'CALLED' ? 'CALLED' : remaining <= 0 ? '0' : `${remaining}`}
           </Text>
         </View>
       </View>
@@ -123,6 +119,7 @@ export const TokenAlertCard: React.FC<TokenAlertCardProps> = ({
       {/* Stale Warning Indicator */}
       {item.is_stale && (
         <View style={styles.staleBanner} testID={`stale-banner-${item.id}`}>
+          <AppIcon name="alert-triangle" size={14} color={Colors.danger} />
           <Text style={styles.staleText}>
             Notice: Display data may be stale (&gt;5m since court board sync).
           </Text>
@@ -172,7 +169,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   tokenNumber: {
-    color: Colors.text.white,
+    color: Colors.text.primary,
     fontSize: 17,
     fontWeight: '800',
     marginRight: 8,
@@ -181,7 +178,7 @@ const styles = StyleSheet.create({
     marginRight: 4,
   },
   caseText: {
-    color: Colors.gold,
+    color: Colors.primary,
     fontSize: 14,
     fontWeight: '700',
     marginBottom: 2,
@@ -213,13 +210,13 @@ const styles = StyleSheet.create({
   },
   statusLabel: {
     color: Colors.text.muted,
-    fontSize: 9,
+    fontSize: 12,
     fontWeight: '700',
-    letterSpacing: 0.5,
+    letterSpacing: 0.4,
     marginBottom: 4,
   },
   statusValue: {
-    color: Colors.text.white,
+    color: Colors.primary,
     fontSize: 16,
     fontWeight: '800',
   },
@@ -230,16 +227,20 @@ const styles = StyleSheet.create({
     color: Colors.success,
   },
   staleBanner: {
-    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: Colors.dangerSurface,
     borderWidth: 1,
-    borderColor: Colors.danger,
-    borderRadius: 6,
+    borderColor: Colors.dangerBorder,
+    borderRadius: 8,
     padding: 8,
     marginBottom: 12,
   },
   staleText: {
+    flex: 1,
     color: Colors.danger,
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '600',
   },
   actionRow: {
@@ -254,4 +255,3 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
 });
-

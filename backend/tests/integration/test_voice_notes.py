@@ -82,13 +82,17 @@ def case_b(db, advocate_b):
     return case
 
 
-def create_sample_audio_file(name: str = "dictation.m4a", content: bytes | None = None) -> SimpleUploadedFile:
+def create_sample_audio_file(
+    name: str = "dictation.m4a", content: bytes | None = None
+) -> SimpleUploadedFile:
     """Generate valid sample audio file with genuine magic bytes."""
     if content is None:
         if name.endswith(".mp3"):
             content = b"ID3\x03\x00\x00\x00\x00\x00\x00" + b"\x00" * 256
         elif name.endswith(".wav"):
-            content = b"RIFF\x24\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00" + b"\x00" * 128
+            content = (
+                b"RIFF\x24\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00" + b"\x00" * 128
+            )
         else:
             # m4a default
             content = b"\x00\x00\x00\x18ftypM4A \x00\x00\x00\x00M4A mp42isom" + b"\x00" * 256
@@ -176,7 +180,9 @@ class TestVoiceNotesAPI:
         api_client.force_authenticate(user=advocate_a)
 
         # 1. Disguised Windows PE/EXE
-        fake_exe = create_sample_audio_file("exploit.m4a", content=b"MZ\x90\x00\x03\x00\x00\x00" + b"\x00" * 100)
+        fake_exe = create_sample_audio_file(
+            "exploit.m4a", content=b"MZ\x90\x00\x03\x00\x00\x00" + b"\x00" * 100
+        )
         resp1 = api_client.post(
             f"/api/voice/cases/{case_a.id}/notes/",
             {"title": "Attack", "audio_file": fake_exe},
@@ -185,7 +191,9 @@ class TestVoiceNotesAPI:
         assert resp1.status_code == status.HTTP_400_BAD_REQUEST
 
         # 2. Disguised HTML/PHP script
-        fake_script = create_sample_audio_file("script.m4a", content=b"<?php echo 'shell'; ?>" + b"\x00" * 100)
+        fake_script = create_sample_audio_file(
+            "script.m4a", content=b"<?php echo 'shell'; ?>" + b"\x00" * 100
+        )
         resp2 = api_client.post(
             f"/api/voice/cases/{case_a.id}/notes/",
             {"title": "Script Attack", "audio_file": fake_script},
@@ -368,7 +376,9 @@ class TestVoiceNotesAPI:
 
         # Inject failing mock provider
         set_speech_to_text_provider_override(
-            MockSpeechToTextProvider(should_fail=True, failure_reason="Temporary STT API quota exceeded")
+            MockSpeechToTextProvider(
+                should_fail=True, failure_reason="Temporary STT API quota exceeded"
+            )
         )
 
         create_resp = api_client.post(
@@ -419,7 +429,9 @@ class TestVoiceNotesAPI:
         assert CaseHistory.objects.filter(case=case_a, event_type="NOTE_ADDED").exists()
 
         # 2. Update
-        api_client.patch(f"/api/voice/notes/{note_id}/", {"title": "Updated Audit Note"}, format="json")
+        api_client.patch(
+            f"/api/voice/notes/{note_id}/", {"title": "Updated Audit Note"}, format="json"
+        )
         assert CaseHistory.objects.filter(case=case_a, event_type="NOTE_UPDATED").exists()
 
         # 3. Delete

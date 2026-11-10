@@ -14,7 +14,11 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.aphc.casetracker"
+      "bundleIdentifier": "com.aphc.casetracker",
+      "infoPlist": {
+        "NSSpeechRecognitionUsageDescription": "Allow APHC Case Tracker to transcribe case queries and appearance notes.",
+        "NSMicrophoneUsageDescription": "Allow APHC Case Tracker to access your microphone for voice case search."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -22,7 +26,21 @@
         "backgroundColor": "#0F172A"
       },
       "package": "com.aphc.casetracker",
-      "allowBackup": false
+      "versionCode": 1,
+      "allowBackup": false,
+      "permissions": [
+        "INTERNET",
+        "RECORD_AUDIO",
+        "POST_NOTIFICATIONS",
+        "VIBRATE",
+        "RECEIVE_BOOT_COMPLETED",
+        "android.permission.RECORD_AUDIO"
+      ],
+      "blockedPermissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "READ_CONTACTS"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png",
@@ -36,10 +54,27 @@
           "microphonePermission": "Allow APHC Case Tracker to access your microphone for voice case search.",
           "speechRecognitionPermission": "Allow APHC Case Tracker to transcribe case queries and appearance notes."
         }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#D4AF37",
+          "sounds": []
+        }
       ]
     ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "router": {
+        "origin": false
+      },
+      "eas": {
+        "projectId": "0c0ce70b-3f7e-48f4-be41-d6cbdad3fd78"
+      }
+    },
+    "owner": "diviii"
   }
 }

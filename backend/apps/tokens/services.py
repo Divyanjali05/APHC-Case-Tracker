@@ -177,4 +177,3 @@ class TokenAlertSyncService:
 
 # Alias for backward and forward service compatibility
 TokenAlertService = TokenAlertSyncService
-

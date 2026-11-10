@@ -1,16 +1,28 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, StyleProp, ViewStyle, TextStyle } from 'react-native';
+import { Colors } from '../../constants/colors';
+import { Radius } from '../../constants/theme';
 
 export interface BadgeProps {
   label: string;
   variant?: 'primary' | 'success' | 'warning' | 'gold' | 'danger' | 'info' | 'secondary';
   testID?: string;
+  style?: StyleProp<ViewStyle>;
+  textStyle?: StyleProp<TextStyle>;
 }
 
-export const Badge: React.FC<BadgeProps> = ({ label, variant = 'primary', testID }) => {
+export const Badge: React.FC<BadgeProps> = ({
+  label,
+  variant = 'primary',
+  testID,
+  style,
+  textStyle,
+}) => {
   return (
-    <View style={[styles.badge, styles[variant]]} testID={testID}>
-      <Text style={[styles.text, styles[`${variant}Text` as keyof typeof styles]]}>
+    <View style={[styles.badge, styles[variant], style]} testID={testID}>
+      <Text
+        style={[styles.text, styles[`${variant}Text` as keyof typeof styles], textStyle]}
+      >
         {label}
       </Text>
     </View>
@@ -20,55 +32,63 @@ export const Badge: React.FC<BadgeProps> = ({ label, variant = 'primary', testID
 const styles = StyleSheet.create({
   badge: {
     paddingVertical: 4,
-    paddingHorizontal: 8,
-    borderRadius: 6,
+    paddingHorizontal: 9,
+    borderRadius: Radius.badge,
     alignSelf: 'flex-start',
+    borderWidth: 1,
   },
   primary: {
-    backgroundColor: '#1E3A8A',
+    backgroundColor: Colors.surfaceBlue,
+    borderColor: '#BFDBFE',
   },
   success: {
-    backgroundColor: '#064E3B',
+    backgroundColor: Colors.successSurface,
+    borderColor: Colors.successBorder,
   },
   warning: {
-    backgroundColor: '#7C2D12',
+    backgroundColor: Colors.warningSurface,
+    borderColor: Colors.warningBorder,
   },
   gold: {
-    backgroundColor: '#78350F',
+    backgroundColor: Colors.goldSurface,
+    borderColor: Colors.goldBorder,
   },
   danger: {
-    backgroundColor: '#7F1D1D',
+    backgroundColor: Colors.dangerSurface,
+    borderColor: Colors.dangerBorder,
   },
   info: {
-    backgroundColor: '#0C4A6E',
+    backgroundColor: Colors.infoSurface,
+    borderColor: Colors.infoBorder,
   },
   secondary: {
-    backgroundColor: '#374151',
+    backgroundColor: Colors.surfaceSubtle,
+    borderColor: Colors.border,
   },
   text: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
-    letterSpacing: 0.5,
+    letterSpacing: 0.3,
   },
   primaryText: {
-    color: '#93C5FD',
+    color: Colors.accent,
   },
   successText: {
-    color: '#6EE7B7',
+    color: Colors.success,
   },
   warningText: {
-    color: '#FDBA74',
+    color: Colors.warning,
   },
   goldText: {
-    color: '#FDE68A',
+    color: '#92400E',
   },
   dangerText: {
-    color: '#FCA5A5',
+    color: Colors.danger,
   },
   infoText: {
-    color: '#7DD3FC',
+    color: Colors.info,
   },
   secondaryText: {
-    color: '#D1D5DB',
+    color: Colors.text.secondary,
   },
 });

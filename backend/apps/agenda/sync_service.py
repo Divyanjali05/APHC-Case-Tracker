@@ -82,7 +82,9 @@ class CalendarSyncService:
         now_utc = timezone.now().strftime("%Y%m%dT%H%M%SZ")
 
         # 1. Format Hearings
-        for hearing in agenda_data.get("today_hearings", []) + agenda_data.get("upcoming_hearings", []):
+        for hearing in agenda_data.get("today_hearings", []) + agenda_data.get(
+            "upcoming_hearings", []
+        ):
             hearing_id = hearing["id"]
             h_date_str = hearing["hearing_date"]  # YYYY-MM-DD
             h_time_str = hearing.get("hearing_time")  # HH:MM:SS or None
@@ -217,7 +219,11 @@ class CalendarSyncService:
                         continue
 
                     # Mock external creation/update ID
-                    ext_id = mapping.external_event_id if mapping else f"ext_h_{h_id}_{setting.provider.lower()}"
+                    ext_id = (
+                        mapping.external_event_id
+                        if mapping
+                        else f"ext_h_{h_id}_{setting.provider.lower()}"
+                    )
 
                     ExternalCalendarEventMap.objects.update_or_create(
                         advocate=advocate,
@@ -254,7 +260,11 @@ class CalendarSyncService:
                     if mapping and mapping.last_payload_hash == payload_hash:
                         continue
 
-                    ext_id = mapping.external_event_id if mapping else f"ext_r_{r_id}_{setting.provider.lower()}"
+                    ext_id = (
+                        mapping.external_event_id
+                        if mapping
+                        else f"ext_r_{r_id}_{setting.provider.lower()}"
+                    )
 
                     ExternalCalendarEventMap.objects.update_or_create(
                         advocate=advocate,
@@ -286,7 +296,9 @@ class CalendarSyncService:
             }
 
         except Exception as exc:
-            logger.error(f"External calendar sync failed for advocate {advocate.id}: {exc}", exc_info=True)
+            logger.error(
+                f"External calendar sync failed for advocate {advocate.id}: {exc}", exc_info=True
+            )
             setting.sync_status = CalendarSyncStatus.FAILED
             setting.sync_error = str(exc)
             setting.save(update_fields=["sync_status", "sync_error"])
@@ -313,4 +325,3 @@ class CalendarSyncService:
         # Clean event mappings for this advocate
         ExternalCalendarEventMap.objects.filter(advocate=advocate).delete()
         return setting
-

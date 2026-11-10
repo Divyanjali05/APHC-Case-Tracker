@@ -14,6 +14,7 @@ import { useTranslation } from 'react-i18next';
 import { Card } from '../common/Card';
 import { Badge } from '../common/Badge';
 import { Button } from '../common/Button';
+import { AppIcon } from '../common/AppIcon';
 import { Colors } from '../../constants/colors';
 import {
   useCaseNotes,
@@ -62,7 +63,10 @@ export const CaseNotesSection: React.FC<CaseNotesSectionProps> = ({ caseId }) =>
 
   const handleSaveNote = () => {
     if (!title.trim() || !content.trim()) {
-      Alert.alert(t('common.error', 'Error'), 'Please fill in both title and note content.');
+      Alert.alert(
+        t('common.error', 'Error'),
+        'Please fill in both title and note content.'
+      );
       return;
     }
 
@@ -124,7 +128,8 @@ export const CaseNotesSection: React.FC<CaseNotesSectionProps> = ({ caseId }) =>
               { caseId, noteId: note.id },
               {
                 onSuccess: () => refetch(),
-                onError: () => Alert.alert(t('common.error', 'Error'), 'Failed to delete note.'),
+                onError: () =>
+                  Alert.alert(t('common.error', 'Error'), 'Failed to delete note.'),
               }
             );
           },
@@ -170,15 +175,22 @@ export const CaseNotesSection: React.FC<CaseNotesSectionProps> = ({ caseId }) =>
       <View style={styles.searchContainer}>
         <TextInput
           style={styles.searchInput}
-          placeholder={t('notes.searchPlaceholder', 'Search notes by title or content...')}
+          placeholder={t(
+            'notes.searchPlaceholder',
+            'Search notes by title or content...'
+          )}
           placeholderTextColor={Colors.text.muted}
           value={searchQuery}
           onChangeText={setSearchQuery}
           testID="notes-search-input"
         />
         {searchQuery ? (
-          <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.clearSearchBtn}>
-            <Text style={styles.clearSearchText}>✕</Text>
+          <TouchableOpacity
+            onPress={() => setSearchQuery('')}
+            style={styles.clearSearchBtn}
+            accessibilityLabel={t('common.cancel', 'Clear')}
+          >
+            <AppIcon name="x" size={14} color={Colors.text.muted} />
           </TouchableOpacity>
         ) : null}
       </View>
@@ -212,8 +224,13 @@ export const CaseNotesSection: React.FC<CaseNotesSectionProps> = ({ caseId }) =>
                   onPress={() => handleTogglePin(note)}
                   style={styles.pinToggleBtn}
                   testID={`toggle-pin-${note.id}`}
+                  accessibilityLabel={note.is_pinned ? 'Unpin note' : 'Pin note'}
                 >
-                  <Text style={styles.pinToggleIcon}>{note.is_pinned ? '★' : '☆'}</Text>
+                  <AppIcon
+                    name="star"
+                    size={18}
+                    color={note.is_pinned ? Colors.gold : Colors.text.muted}
+                  />
                 </TouchableOpacity>
               </View>
 
@@ -252,7 +269,9 @@ export const CaseNotesSection: React.FC<CaseNotesSectionProps> = ({ caseId }) =>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>
-              {editingNote ? t('notes.edit', 'Edit Note') : t('notes.addNote', 'Add Private Note')}
+              {editingNote
+                ? t('notes.edit', 'Edit Note')
+                : t('notes.addNote', 'Add Private Note')}
             </Text>
 
             <Text style={styles.inputLabel}>{t('notes.noteTitle', 'Title')}</Text>
@@ -270,7 +289,10 @@ export const CaseNotesSection: React.FC<CaseNotesSectionProps> = ({ caseId }) =>
               style={[styles.input, styles.textArea]}
               value={content}
               onChangeText={setContent}
-              placeholder={t('notes.noteContentPlaceholder', 'Enter confidential preparation notes...')}
+              placeholder={t(
+                'notes.noteContentPlaceholder',
+                'Enter confidential preparation notes...'
+              )}
               placeholderTextColor={Colors.text.muted}
               multiline
               numberOfLines={4}
@@ -328,7 +350,7 @@ const styles = StyleSheet.create({
     color: Colors.text.primary,
   },
   sectionSubtitle: {
-    fontSize: 11,
+    fontSize: 12,
     color: Colors.text.secondary,
     marginTop: 2,
   },
@@ -354,10 +376,6 @@ const styles = StyleSheet.create({
   },
   clearSearchBtn: {
     padding: 4,
-  },
-  clearSearchText: {
-    fontSize: 13,
-    color: Colors.text.muted,
   },
   loader: {
     marginVertical: 16,
@@ -408,10 +426,6 @@ const styles = StyleSheet.create({
   pinToggleBtn: {
     padding: 4,
   },
-  pinToggleIcon: {
-    fontSize: 18,
-    color: Colors.gold,
-  },
   noteContent: {
     fontSize: 13,
     color: Colors.text.primary,
@@ -427,7 +441,7 @@ const styles = StyleSheet.create({
     paddingTop: 8,
   },
   noteDate: {
-    fontSize: 11,
+    fontSize: 12,
     color: Colors.text.muted,
   },
   noteActions: {

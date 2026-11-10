@@ -247,7 +247,14 @@ class CaseHistoryListView(generics.ListAPIView):
 
     def get_queryset(self):
         case = self.get_case()
-        queryset = CaseHistory.objects.filter(case=case).select_related("changed_by")
+        queryset = (
+            CaseHistory.objects.filter(case=case)
+            .exclude(
+                Q(event_type__in=["NOTE_ADDED", "NOTE_UPDATED", "NOTE_DELETED"])
+                & ~Q(changed_by=self.request.user)
+            )
+            .select_related("changed_by")
+        )
         event_type = self.request.query_params.get("event_type", "").strip()
         if event_type:
             queryset = queryset.filter(event_type__iexact=event_type)
@@ -595,20 +602,22 @@ class CaseDocumentDetailView(APIView):
 
     permission_classes = [permissions.IsAuthenticated]
 
-    def get_document(self, case_id, pk):
-        return get_object_or_404(
-            CaseDocument.objects.select_related("case", "uploaded_by"),
+    def get_document(self, case_id, pk, *, require_uploader: bool = False):
+        qs = CaseDocument.objects.select_related("case", "uploaded_by").filter(
             id=pk,
             case_id=case_id,
             case__tracked_by=self.request.user,
         )
+        if require_uploader:
+            qs = qs.filter(uploaded_by=self.request.user)
+        return get_object_or_404(qs)
 
     def get(self, request, case_id, pk):
         doc = self.get_document(case_id, pk)
         return Response(CaseDocumentSerializer(doc).data, status=status.HTTP_200_OK)
 
     def patch(self, request, case_id, pk):
-        doc = self.get_document(case_id, pk)
+        doc = self.get_document(case_id, pk, require_uploader=True)
         serializer = CaseDocumentSerializer(doc, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         updated_doc = serializer.save()
@@ -624,7 +633,7 @@ class CaseDocumentDetailView(APIView):
         return Response(CaseDocumentSerializer(updated_doc).data, status=status.HTTP_200_OK)
 
     def delete(self, request, case_id, pk):
-        doc = self.get_document(case_id, pk)
+        doc = self.get_document(case_id, pk, require_uploader=True)
         case = doc.case
         title = doc.title
         if doc.file:
@@ -711,7 +720,13 @@ class CaseNoteDetailView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_note(self, case_id, pk):
-        return get_object_or_404(CaseNote, id=pk, case_id=case_id, advocate=self.request.user)
+        return get_object_or_404(
+            CaseNote,
+            id=pk,
+            case_id=case_id,
+            advocate=self.request.user,
+            case__tracked_by=self.request.user,
+        )
 
     def get(self, request, case_id, pk):
         note = self.get_note(case_id, pk)
@@ -744,7 +759,7 @@ class CaseSummaryPdfExportView(APIView):
 
     def get(self, request, case_id):
         case = get_object_or_404(
-            Case.objects.prefetch_related("hearings", "judgments", "documents", "notes"),
+            Case.objects.prefetch_related("hearings", "judgments", "documents"),
             id=case_id,
             tracked_by=request.user,
         )

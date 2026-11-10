@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { Colors } from '../../constants/colors';
+import { AppIcon } from '../common/AppIcon';
 import { useCreateReminder, CreateReminderPayload } from '../../features/reminders/hooks';
 
 export interface CreateReminderModalProps {
@@ -113,8 +114,9 @@ export const CreateReminderModal: React.FC<CreateReminderModalProps> = ({
                 onPress={handleClose}
                 style={styles.closeIconBtn}
                 testID="reminder-cancel-btn"
+                accessibilityLabel={t('common.close', 'Close')}
               >
-                <Text style={styles.closeIconText}>✕</Text>
+                <AppIcon name="x" size={18} color={Colors.text.secondary} />
               </TouchableOpacity>
             </View>
 
@@ -225,17 +227,17 @@ export const CreateReminderModal: React.FC<CreateReminderModalProps> = ({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.65)',
+    backgroundColor: Colors.overlay,
     justifyContent: 'flex-end',
   },
   sheetContainer: {
-    backgroundColor: '#0F172A',
+    backgroundColor: Colors.surface,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     padding: 20,
     maxHeight: '90%',
-    borderWidth: 1,
-    borderColor: '#334155',
+    borderTopWidth: 1,
+    borderColor: Colors.border,
   },
   content: {
     paddingBottom: 24,
@@ -249,42 +251,44 @@ const styles = StyleSheet.create({
   sheetTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#F8FAFC',
+    color: Colors.text.primary,
   },
   closeIconBtn: {
-    padding: 6,
-  },
-  closeIconText: {
-    fontSize: 18,
-    color: '#94A3B8',
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: Colors.surfaceSubtle,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   errorBanner: {
-    backgroundColor: 'rgba(239, 68, 68, 0.15)',
-    borderColor: '#EF4444',
+    backgroundColor: Colors.dangerSurface,
+    borderColor: Colors.dangerBorder,
     borderWidth: 1,
     borderRadius: 8,
     padding: 10,
     marginBottom: 14,
   },
   errorText: {
-    color: '#FCA5A5',
+    color: Colors.danger,
     fontSize: 13,
+    fontWeight: '600',
   },
   label: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#CBD5E1',
+    color: Colors.text.secondary,
     marginBottom: 6,
     marginTop: 10,
   },
   input: {
-    backgroundColor: '#1E293B',
-    borderColor: '#334155',
+    backgroundColor: Colors.surfaceSubtle,
+    borderColor: Colors.border,
     borderWidth: 1,
-    borderRadius: 8,
+    borderRadius: 10,
     paddingHorizontal: 14,
     paddingVertical: 10,
-    color: '#F8FAFC',
+    color: Colors.text.primary,
     fontSize: 14,
   },
   multilineInput: {
@@ -300,23 +304,23 @@ const styles = StyleSheet.create({
   },
   typeChip: {
     paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingVertical: 7,
     borderRadius: 16,
-    backgroundColor: '#1E293B',
+    backgroundColor: Colors.surfaceSubtle,
     borderWidth: 1,
-    borderColor: '#475569',
+    borderColor: Colors.border,
   },
   typeChipActive: {
-    backgroundColor: '#1E3A8A',
-    borderColor: '#60A5FA',
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
   },
   typeChipText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#94A3B8',
+    color: Colors.text.secondary,
   },
   typeChipTextActive: {
-    color: '#93C5FD',
+    color: Colors.text.white,
   },
   actions: {
     flexDirection: 'row',
@@ -328,17 +332,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 8,
-    backgroundColor: '#334155',
+    backgroundColor: Colors.surfaceSubtle,
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
   cancelBtnText: {
-    color: '#E2E8F0',
+    color: Colors.text.primary,
     fontWeight: '600',
   },
   submitBtn: {
     paddingHorizontal: 20,
     paddingVertical: 10,
     borderRadius: 8,
-    backgroundColor: '#2563EB',
+    backgroundColor: Colors.primary,
     minWidth: 120,
     alignItems: 'center',
     justifyContent: 'center',
@@ -347,7 +353,7 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   submitBtnText: {
-    color: '#FFFFFF',
+    color: Colors.text.white,
     fontWeight: '700',
   },
 });

@@ -13,6 +13,7 @@ import { useTranslation } from 'react-i18next';
 import { Colors } from '../../constants/colors';
 import { Badge } from '../common/Badge';
 import { Button } from '../common/Button';
+import { AppIcon } from '../common/AppIcon';
 import { NotificationCard } from './NotificationCard';
 import {
   useNotifications,
@@ -50,13 +51,22 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
       return cat === 'REMINDER' || cat === 'HEARING_REMINDER';
     }
     if (selectedFilter === 'TOKENS') {
-      return cat === 'TOKEN_ALERT' || cat === 'TOKEN_APPROACHING' || cat === 'TOKEN_CALLED';
+      return (
+        cat === 'TOKEN_ALERT' || cat === 'TOKEN_APPROACHING' || cat === 'TOKEN_CALLED'
+      );
     }
     if (selectedFilter === 'CASES') {
-      return cat === 'CASE_UPDATE' || cat === 'HEARING_CHANGE' || cat === 'JUDGMENT' || cat === 'CAUSELIST';
+      return (
+        cat === 'CASE_UPDATE' ||
+        cat === 'HEARING_CHANGE' ||
+        cat === 'JUDGMENT' ||
+        cat === 'CAUSELIST'
+      );
     }
     if (selectedFilter === 'VOICE') {
-      return cat === 'VOICE_TRANSCRIPTION_COMPLETED' || cat === 'VOICE_TRANSCRIPTION_FAILED';
+      return (
+        cat === 'VOICE_TRANSCRIPTION_COMPLETED' || cat === 'VOICE_TRANSCRIPTION_FAILED'
+      );
     }
     return true;
   });
@@ -109,8 +119,9 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
             onPress={onClose}
             style={styles.closeButton}
             testID="close-notifications-btn"
+            accessibilityLabel={t('common.close', 'Close')}
           >
-            <Text style={styles.closeText}>✕</Text>
+            <AppIcon name="x" size={18} color={Colors.text.secondary} />
           </TouchableOpacity>
         </View>
 
@@ -129,39 +140,57 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
 
         {/* Filter Pills */}
         <View style={styles.filterRow}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScroll}>
-            {(['ALL', 'HEARINGS', 'TOKENS', 'CASES', 'VOICE'] as FilterCategoryKey[]).map(key => {
-              const isActive = selectedFilter === key;
-              return (
-                <TouchableOpacity
-                  key={key}
-                  style={[styles.filterPill, isActive && styles.filterPillActive]}
-                  onPress={() => setSelectedFilter(key)}
-                  testID={`filter-tab-${key.toLowerCase()}`}
-                >
-                  <Text style={[styles.filterPillText, isActive && styles.filterPillTextActive]}>
-                    {t(`notifications.filter_${key.toLowerCase()}`, key)}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.filterScroll}
+          >
+            {(['ALL', 'HEARINGS', 'TOKENS', 'CASES', 'VOICE'] as FilterCategoryKey[]).map(
+              key => {
+                const isActive = selectedFilter === key;
+                return (
+                  <TouchableOpacity
+                    key={key}
+                    style={[styles.filterPill, isActive && styles.filterPillActive]}
+                    onPress={() => setSelectedFilter(key)}
+                    testID={`filter-tab-${key.toLowerCase()}`}
+                  >
+                    <Text
+                      style={[
+                        styles.filterPillText,
+                        isActive && styles.filterPillTextActive,
+                      ]}
+                    >
+                      {t(`notifications.filter_${key.toLowerCase()}`, key)}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              }
+            )}
           </ScrollView>
         </View>
 
         {/* Notifications List */}
         <ScrollView
           contentContainerStyle={styles.listContent}
-          refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} />}
+          refreshControl={
+            <RefreshControl refreshing={isRefetching} onRefresh={refetch} />
+          }
           testID="notifications-list"
         >
           {filteredNotifications.length === 0 ? (
             <View style={styles.emptyContainer} testID="notifications-empty-state">
-              <Text style={styles.emptyIcon}>🔔</Text>
+              <View style={styles.emptyIconCircle}>
+                <AppIcon name="bell" size={32} color={Colors.primaryLight} />
+              </View>
               <Text style={styles.emptyTitle}>
                 {t('notifications.noAlerts', 'No notifications found')}
               </Text>
               <Text style={styles.emptySubtitle}>
-                {t('notifications.emptySubtitle', 'Court listings and hearing alerts will appear here.')}
+                {t(
+                  'notifications.emptySubtitle',
+                  'Court listings and hearing alerts will appear here.'
+                )}
               </Text>
             </View>
           ) : (
@@ -214,11 +243,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  closeText: {
-    color: Colors.text.primary,
-    fontSize: 16,
-    fontWeight: '700',
-  },
   actionBar: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
@@ -243,8 +267,8 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
   },
   filterPillActive: {
-    backgroundColor: '#1E3A8A',
-    borderColor: Colors.primaryLight,
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
   },
   filterPillText: {
     fontSize: 12,
@@ -264,9 +288,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 60,
   },
-  emptyIcon: {
-    fontSize: 48,
-    marginBottom: 12,
+  emptyIconCircle: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    backgroundColor: Colors.surfaceBlue,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 14,
   },
   emptyTitle: {
     fontSize: 16,
@@ -281,4 +310,3 @@ const styles = StyleSheet.create({
     maxWidth: 260,
   },
 });
-

@@ -131,7 +131,7 @@ class DashboardService:
 
     @classmethod
     def get_dashboard_data(cls, user) -> dict[str, Any]:
-        from apps.cases.models import Case, Hearing
+        from apps.cases.models import Case, CaseHistory, Hearing
         from apps.court_data.models import CourtListing
         from apps.notifications.models import NotificationHistory
         from apps.reminders.models import Reminder
@@ -266,6 +266,28 @@ class DashboardService:
                 }
             )
 
+        # 5b. Recent Case Activity (last 5 non-confidential events across tracked cases)
+        private_note_events = ["NOTE_ADDED", "NOTE_UPDATED", "NOTE_DELETED"]
+        activity_qs = (
+            CaseHistory.objects.filter(case__tracked_by=user)
+            .exclude(Q(event_type__in=private_note_events) & ~Q(changed_by=user))
+            .select_related("case")
+            .order_by("-created_at")[:5]
+        )
+        recent_activity = []
+        for entry in activity_qs:
+            recent_activity.append(
+                {
+                    "id": entry.id,
+                    "case_id": entry.case_id,
+                    "case_number": f"{entry.case.case_type} {entry.case.case_number}/{entry.case.filing_year}",
+                    "event_type": entry.event_type,
+                    "description": entry.description,
+                    "source": entry.source,
+                    "created_at": entry.created_at,
+                }
+            )
+
         # 6. Court Data Sync Status
         latest_listing = (
             CourtListing.objects.filter(case__tracked_by=user, last_synced_at__isnull=False)
@@ -292,6 +314,7 @@ class DashboardService:
             "upcoming_hearings": upcoming_hearings,
             "upcoming_reminders": upcoming_reminders,
             "recent_notifications": recent_notifications,
+            "recent_activity": recent_activity,
             "sync_status": {
                 "last_synced_at": last_synced_at,
                 "is_fresh": is_fresh,

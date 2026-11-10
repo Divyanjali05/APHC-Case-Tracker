@@ -128,7 +128,9 @@ class TestPushNotificationsEngine:
         assert res.data["device_id"] == "device-uuid-111"
         assert res.data["is_active"] is True
 
-        device = DeviceRegistration.objects.get(expo_push_token="ExponentPushToken[Abc123ValidToken_Phase7]")
+        device = DeviceRegistration.objects.get(
+            expo_push_token="ExponentPushToken[Abc123ValidToken_Phase7]"
+        )
         assert device.user == advocate_a
         assert device.failure_count == 0
 
@@ -136,20 +138,28 @@ class TestPushNotificationsEngine:
     def test_multiple_devices_per_advocate(self, api_client, advocate_a):
         api_client.force_authenticate(user=advocate_a)
         # Register Phone
-        api_client.post("/api/notifications/devices/", data={
-            "expo_push_token": "ExponentPushToken[PhoneToken_001]",
-            "platform": "android",
-            "device_name": "OnePlus 12",
-            "device_id": "phone-id-01",
-        }, format="json")
+        api_client.post(
+            "/api/notifications/devices/",
+            data={
+                "expo_push_token": "ExponentPushToken[PhoneToken_001]",
+                "platform": "android",
+                "device_name": "OnePlus 12",
+                "device_id": "phone-id-01",
+            },
+            format="json",
+        )
 
         # Register Tablet
-        api_client.post("/api/notifications/devices/", data={
-            "expo_push_token": "ExponentPushToken[TabletToken_002]",
-            "platform": "ios",
-            "device_name": "iPad Pro 11",
-            "device_id": "tablet-id-02",
-        }, format="json")
+        api_client.post(
+            "/api/notifications/devices/",
+            data={
+                "expo_push_token": "ExponentPushToken[TabletToken_002]",
+                "platform": "ios",
+                "device_name": "iPad Pro 11",
+                "device_id": "tablet-id-02",
+            },
+            format="json",
+        )
 
         devices = DeviceRegistration.objects.filter(user=advocate_a, is_active=True)
         assert devices.count() == 2
@@ -160,53 +170,79 @@ class TestPushNotificationsEngine:
     def test_token_rotation_same_device(self, api_client, advocate_a):
         api_client.force_authenticate(user=advocate_a)
         # Register initial token
-        api_client.post("/api/notifications/devices/", data={
-            "expo_push_token": "ExponentPushToken[InitialToken_123]",
-            "device_id": "hardware-xyz",
-            "platform": "android",
-        }, format="json")
+        api_client.post(
+            "/api/notifications/devices/",
+            data={
+                "expo_push_token": "ExponentPushToken[InitialToken_123]",
+                "device_id": "hardware-xyz",
+                "platform": "android",
+            },
+            format="json",
+        )
 
         # Rotate token on same device
-        api_client.post("/api/notifications/devices/", data={
-            "expo_push_token": "ExponentPushToken[RotatedToken_456]",
-            "device_id": "hardware-xyz",
-            "platform": "android",
-        }, format="json")
+        api_client.post(
+            "/api/notifications/devices/",
+            data={
+                "expo_push_token": "ExponentPushToken[RotatedToken_456]",
+                "device_id": "hardware-xyz",
+                "platform": "android",
+            },
+            format="json",
+        )
 
-        old_device = DeviceRegistration.objects.get(expo_push_token="ExponentPushToken[InitialToken_123]")
-        new_device = DeviceRegistration.objects.get(expo_push_token="ExponentPushToken[RotatedToken_456]")
+        old_device = DeviceRegistration.objects.get(
+            expo_push_token="ExponentPushToken[InitialToken_123]"
+        )
+        new_device = DeviceRegistration.objects.get(
+            expo_push_token="ExponentPushToken[RotatedToken_456]"
+        )
 
         assert old_device.is_active is False
         assert new_device.is_active is True
 
     # 4. Token Reassignment Between Users
-    def test_token_reassigned_when_registered_by_another_user(self, api_client, advocate_a, advocate_b):
+    def test_token_reassigned_when_registered_by_another_user(
+        self, api_client, advocate_a, advocate_b
+    ):
         # Advocate A registers token
         NotificationService.register_device(
             user=advocate_a,
             expo_push_token="ExponentPushToken[SharedDeviceToken_999]",
             platform="android",
         )
-        assert DeviceRegistration.objects.filter(expo_push_token="ExponentPushToken[SharedDeviceToken_999]", user=advocate_a).exists()
+        assert DeviceRegistration.objects.filter(
+            expo_push_token="ExponentPushToken[SharedDeviceToken_999]", user=advocate_a
+        ).exists()
 
         # Advocate B logs in on same device
         api_client.force_authenticate(user=advocate_b)
-        res = api_client.post("/api/notifications/devices/", data={
-            "expo_push_token": "ExponentPushToken[SharedDeviceToken_999]",
-            "platform": "android",
-        }, format="json")
+        res = api_client.post(
+            "/api/notifications/devices/",
+            data={
+                "expo_push_token": "ExponentPushToken[SharedDeviceToken_999]",
+                "platform": "android",
+            },
+            format="json",
+        )
         assert res.status_code == status.HTTP_201_CREATED
 
-        device = DeviceRegistration.objects.get(expo_push_token="ExponentPushToken[SharedDeviceToken_999]")
+        device = DeviceRegistration.objects.get(
+            expo_push_token="ExponentPushToken[SharedDeviceToken_999]"
+        )
         assert device.user == advocate_b
 
     # 5. Invalid Token Format Rejected
     def test_invalid_token_format_rejected(self, api_client, advocate_a):
         api_client.force_authenticate(user=advocate_a)
-        res = api_client.post("/api/notifications/devices/", data={
-            "expo_push_token": "not-a-valid-token-string",
-            "platform": "android",
-        }, format="json")
+        res = api_client.post(
+            "/api/notifications/devices/",
+            data={
+                "expo_push_token": "not-a-valid-token-string",
+                "platform": "android",
+            },
+            format="json",
+        )
         assert res.status_code == status.HTTP_400_BAD_REQUEST
         assert "expo_push_token" in str(res.data)
 
@@ -216,7 +252,9 @@ class TestPushNotificationsEngine:
         token = "ExponentPushToken[DeactivateMe_789]"
         NotificationService.register_device(user=advocate_a, expo_push_token=token)
 
-        res = api_client.post("/api/notifications/devices/deactivate/", data={"expo_push_token": token}, format="json")
+        res = api_client.post(
+            "/api/notifications/devices/deactivate/", data={"expo_push_token": token}, format="json"
+        )
         assert res.status_code == status.HTTP_200_OK
         assert res.data["deactivated_count"] == 1
 
@@ -226,10 +264,16 @@ class TestPushNotificationsEngine:
     # 7. Deactivate All Devices on Logout
     def test_device_deactivation_all_devices(self, api_client, advocate_a):
         api_client.force_authenticate(user=advocate_a)
-        NotificationService.register_device(user=advocate_a, expo_push_token="ExponentPushToken[DevA_111]")
-        NotificationService.register_device(user=advocate_a, expo_push_token="ExponentPushToken[DevA_222]")
+        NotificationService.register_device(
+            user=advocate_a, expo_push_token="ExponentPushToken[DevA_111]"
+        )
+        NotificationService.register_device(
+            user=advocate_a, expo_push_token="ExponentPushToken[DevA_222]"
+        )
 
-        res = api_client.post("/api/notifications/devices/deactivate/", data={"all": True}, format="json")
+        res = api_client.post(
+            "/api/notifications/devices/deactivate/", data={"all": True}, format="json"
+        )
         assert res.status_code == status.HTTP_200_OK
         assert res.data["deactivated_count"] == 2
 
@@ -237,7 +281,9 @@ class TestPushNotificationsEngine:
 
     # 8. Mock Provider Push Dispatch
     def test_mock_provider_dispatch(self, advocate_a):
-        NotificationService.register_device(user=advocate_a, expo_push_token="ExponentPushToken[MockDispatch_01]")
+        NotificationService.register_device(
+            user=advocate_a, expo_push_token="ExponentPushToken[MockDispatch_01]"
+        )
 
         notif = NotificationService.send_push_notification(
             user=advocate_a,
@@ -340,7 +386,9 @@ class TestPushNotificationsEngine:
 
     # 13. Idempotency Key Prevents Duplicate Notifications
     def test_idempotency_prevents_duplicate_notifications(self, advocate_a):
-        NotificationService.register_device(user=advocate_a, expo_push_token="ExponentPushToken[IdemDevice_01]")
+        NotificationService.register_device(
+            user=advocate_a, expo_push_token="ExponentPushToken[IdemDevice_01]"
+        )
 
         key = "hearing-reminder-unique-999"
         n1 = NotificationService.send_push_notification(
@@ -378,7 +426,9 @@ class TestPushNotificationsEngine:
 
     # 15. Lock Screen Payload Privacy & Sanitization
     def test_lock_screen_payload_privacy_sanitization(self, advocate_a, sample_case):
-        NotificationService.register_device(user=advocate_a, expo_push_token="ExponentPushToken[PrivacyDevice_01]")
+        NotificationService.register_device(
+            user=advocate_a, expo_push_token="ExponentPushToken[PrivacyDevice_01]"
+        )
 
         confidential_title = f"Urgent Hearing: {sample_case.petitioner} v. {sample_case.respondent}"
         confidential_body = "Confidential dispute strategy listed for urgent stay orders."
@@ -404,7 +454,9 @@ class TestPushNotificationsEngine:
 
     # 16. Hearing Reminder Notification Trigger
     def test_hearing_reminder_notification_trigger(self, advocate_a, sample_case):
-        NotificationService.register_device(user=advocate_a, expo_push_token="ExponentPushToken[ReminderDevice_01]")
+        NotificationService.register_device(
+            user=advocate_a, expo_push_token="ExponentPushToken[ReminderDevice_01]"
+        )
 
         hearing = Hearing.objects.create(
             case=sample_case,
@@ -429,9 +481,12 @@ class TestPushNotificationsEngine:
 
     # 17. Token Approaching Alert Trigger
     def test_token_approaching_notification_trigger(self, advocate_a, sample_case, court_hall_7):
-        NotificationService.register_device(user=advocate_a, expo_push_token="ExponentPushToken[TokenDevice_01]")
+        NotificationService.register_device(
+            user=advocate_a, expo_push_token="ExponentPushToken[TokenDevice_01]"
+        )
 
         from apps.tokens.services import TokenAlertService
+
         service = TokenAlertService()
 
         # Set current court hall item to 7
@@ -459,9 +514,12 @@ class TestPushNotificationsEngine:
 
     # 18. Token Called Alert Trigger
     def test_token_called_notification_trigger(self, advocate_a, sample_case, court_hall_7):
-        NotificationService.register_device(user=advocate_a, expo_push_token="ExponentPushToken[TokenDevice_02]")
+        NotificationService.register_device(
+            user=advocate_a, expo_push_token="ExponentPushToken[TokenDevice_02]"
+        )
 
         from apps.tokens.services import TokenAlertService
+
         service = TokenAlertService()
 
         # Item 15 called
@@ -488,7 +546,9 @@ class TestPushNotificationsEngine:
 
     # 19. Calendar Agenda Reminder Trigger
     def test_calendar_agenda_reminder_trigger(self, advocate_a, sample_case):
-        NotificationService.register_device(user=advocate_a, expo_push_token="ExponentPushToken[CalendarDev_01]")
+        NotificationService.register_device(
+            user=advocate_a, expo_push_token="ExponentPushToken[CalendarDev_01]"
+        )
 
         notif = NotificationService.send_push_notification(
             user=advocate_a,
@@ -503,7 +563,9 @@ class TestPushNotificationsEngine:
 
     # 20. Voice Transcription Completed Trigger
     def test_voice_transcription_completed_trigger(self, advocate_a, sample_case):
-        NotificationService.register_device(user=advocate_a, expo_push_token="ExponentPushToken[VoiceDev_01]")
+        NotificationService.register_device(
+            user=advocate_a, expo_push_token="ExponentPushToken[VoiceDev_01]"
+        )
 
         voice_note = VoiceNote.objects.create(
             advocate=advocate_a,
@@ -513,11 +575,15 @@ class TestPushNotificationsEngine:
             transcription_status=TranscriptionStatus.NOT_STARTED,
         )
 
-        with patch("os.path.exists", return_value=True), \
-             patch("apps.voice.services.get_speech_to_text_provider") as mock_stt:
+        with (
+            patch("os.path.exists", return_value=True),
+            patch("apps.voice.services.get_speech_to_text_provider") as mock_stt,
+        ):
+
             class MockSTT:
                 def transcribe(self, **kwargs):
                     from apps.voice.providers import SpeechToTextResult
+
                     return SpeechToTextResult(
                         transcript="సాక్ష్యం నమోదు చేయబడింది",
                         language="te",
@@ -528,6 +594,7 @@ class TestPushNotificationsEngine:
 
             mock_stt.return_value = MockSTT()
             from apps.voice.services import VoiceTranscriptionService
+
             VoiceTranscriptionService.process_transcription(voice_note.id)
 
         notif = NotificationHistory.objects.filter(
@@ -540,7 +607,9 @@ class TestPushNotificationsEngine:
 
     # 21. Voice Transcription Failed Trigger
     def test_voice_transcription_failed_trigger(self, advocate_a, sample_case):
-        NotificationService.register_device(user=advocate_a, expo_push_token="ExponentPushToken[VoiceDev_02]")
+        NotificationService.register_device(
+            user=advocate_a, expo_push_token="ExponentPushToken[VoiceDev_02]"
+        )
 
         voice_note = VoiceNote.objects.create(
             advocate=advocate_a,
@@ -550,14 +619,18 @@ class TestPushNotificationsEngine:
             transcription_status=TranscriptionStatus.NOT_STARTED,
         )
 
-        with patch("os.path.exists", return_value=True), \
-             patch("apps.voice.services.get_speech_to_text_provider") as mock_stt:
+        with (
+            patch("os.path.exists", return_value=True),
+            patch("apps.voice.services.get_speech_to_text_provider") as mock_stt,
+        ):
+
             class MockFailSTT:
                 def transcribe(self, **kwargs):
                     raise RuntimeError("Audio codec corruption error")
 
             mock_stt.return_value = MockFailSTT()
             from apps.voice.services import VoiceTranscriptionService
+
             VoiceTranscriptionService.process_transcription(voice_note.id)
 
         notif = NotificationHistory.objects.filter(
@@ -571,7 +644,9 @@ class TestPushNotificationsEngine:
     # 22. Multi-Tenant Device Isolation
     def test_multi_tenant_device_isolation(self, api_client, advocate_a, advocate_b):
         # Advocate A registers device
-        dev_a = NotificationService.register_device(user=advocate_a, expo_push_token="ExponentPushToken[DevAdvocateA_01]")
+        dev_a = NotificationService.register_device(
+            user=advocate_a, expo_push_token="ExponentPushToken[DevAdvocateA_01]"
+        )
 
         # Advocate B lists devices
         api_client.force_authenticate(user=advocate_b)
@@ -604,7 +679,9 @@ class TestPushNotificationsEngine:
         api_client.force_authenticate(user=advocate_b)
         res = api_client.get("/api/notifications/history/")
         assert res.status_code == status.HTTP_200_OK
-        history_items = res.data.get("results", res.data) if isinstance(res.data, dict) else res.data
+        history_items = (
+            res.data.get("results", res.data) if isinstance(res.data, dict) else res.data
+        )
         ids = [n["id"] for n in history_items]
         assert notif_a.id not in ids
 
@@ -633,4 +710,3 @@ class TestPushNotificationsEngine:
 
         count_after = api_client.get("/api/notifications/unread-count/")
         assert count_after.data["unread_count"] == 0
-

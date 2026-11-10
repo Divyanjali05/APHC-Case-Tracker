@@ -14,10 +14,15 @@ import { Colors } from '../../constants/colors';
 import { audioService } from '../../services/voice/audioService';
 import { VoiceNoteItem, VoiceTranscriptionLanguage } from '../../types';
 import { Button } from '../common/Button';
+import { AppIcon } from '../common/AppIcon';
 
 export interface VoiceNoteCardProps {
   note: VoiceNoteItem;
-  onUpdate: (data: { title?: string; transcript?: string; transcription_language?: VoiceTranscriptionLanguage }) => Promise<void>;
+  onUpdate: (data: {
+    title?: string;
+    transcript?: string;
+    transcription_language?: VoiceTranscriptionLanguage;
+  }) => Promise<void>;
   onDelete: () => Promise<void>;
   onRetrySTT: (language?: VoiceTranscriptionLanguage) => Promise<void>;
   isUpdating?: boolean;
@@ -165,8 +170,13 @@ export const VoiceNoteCard: React.FC<VoiceNoteCardProps> = ({
           style={styles.playBtn}
           onPress={handleTogglePlay}
           testID={`play-audio-button-${note.id}`}
+          accessibilityLabel={isPlaying ? 'Pause audio' : 'Play audio'}
         >
-          <Text style={styles.playBtnText}>{isPlaying ? '⏸' : '▶'}</Text>
+          <AppIcon
+            name={isPlaying ? 'pause' : 'play'}
+            size={16}
+            color={Colors.text.white}
+          />
         </TouchableOpacity>
 
         <View style={styles.progressContainer}>
@@ -200,7 +210,11 @@ export const VoiceNoteCard: React.FC<VoiceNoteCardProps> = ({
               {note.transcription_error || t('voiceNotes.status.FAILED', 'STT Failed')}
             </Text>
             <Button
-              title={isRetrying ? 'Retrying...' : t('voiceNotes.retryTranscription', 'Retry STT')}
+              title={
+                isRetrying
+                  ? 'Retrying...'
+                  : t('voiceNotes.retryTranscription', 'Retry STT')
+              }
               onPress={() => onRetrySTT(note.transcription_language)}
               variant="outline"
               loading={isRetrying}
@@ -230,7 +244,12 @@ export const VoiceNoteCard: React.FC<VoiceNoteCardProps> = ({
           }}
           testID={`edit-transcript-button-${note.id}`}
         >
-          <Text style={styles.actionBtnText}>✏ {t('voiceNotes.editTranscript', 'Edit Note')}</Text>
+          <View style={styles.actionInner}>
+            <AppIcon name="edit" size={13} color={Colors.primary} />
+            <Text style={styles.actionBtnText}>
+              {t('voiceNotes.editTranscript', 'Edit Note')}
+            </Text>
+          </View>
         </TouchableOpacity>
 
         {note.transcription_status === 'COMPLETED' && (
@@ -240,7 +259,12 @@ export const VoiceNoteCard: React.FC<VoiceNoteCardProps> = ({
             disabled={isRetrying}
             testID={`retranscribe-button-${note.id}`}
           >
-            <Text style={styles.actionBtnText}>🔄 {t('voiceNotes.retryTranscription', 'Re-run STT')}</Text>
+            <View style={styles.actionInner}>
+              <AppIcon name="refresh" size={13} color={Colors.primary} />
+              <Text style={styles.actionBtnText}>
+                {t('voiceNotes.retryTranscription', 'Re-run STT')}
+              </Text>
+            </View>
           </TouchableOpacity>
         )}
 
@@ -250,7 +274,10 @@ export const VoiceNoteCard: React.FC<VoiceNoteCardProps> = ({
           disabled={isDeleting}
           testID={`delete-voice-note-button-${note.id}`}
         >
-          <Text style={styles.deleteBtnText}>🗑 {t('common.delete', 'Delete')}</Text>
+          <View style={styles.actionInner}>
+            <AppIcon name="trash" size={13} color={Colors.danger} />
+            <Text style={styles.deleteBtnText}>{t('common.delete', 'Delete')}</Text>
+          </View>
         </TouchableOpacity>
       </View>
 
@@ -262,13 +289,18 @@ export const VoiceNoteCard: React.FC<VoiceNoteCardProps> = ({
               <Text style={styles.modalTitle}>
                 {t('voiceNotes.editTranscript', 'Edit Voice Note & Transcript')}
               </Text>
-              <TouchableOpacity onPress={() => setIsEditModalVisible(false)}>
-                <Text style={styles.closeText}>✕</Text>
+              <TouchableOpacity
+                onPress={() => setIsEditModalVisible(false)}
+                accessibilityLabel={t('common.close', 'Close')}
+              >
+                <AppIcon name="x" size={18} color={Colors.text.secondary} />
               </TouchableOpacity>
             </View>
 
             <View style={styles.modalBody}>
-              <Text style={styles.modalLabel}>{t('voiceNotes.titlePlaceholder', 'Title')}</Text>
+              <Text style={styles.modalLabel}>
+                {t('voiceNotes.titlePlaceholder', 'Title')}
+              </Text>
               <TextInput
                 style={styles.modalInput}
                 value={editedTitle}
@@ -292,7 +324,10 @@ export const VoiceNoteCard: React.FC<VoiceNoteCardProps> = ({
               {note.original_transcript ? (
                 <View style={styles.origBox}>
                   <Text style={styles.origLabel}>
-                    {t('voiceNotes.originalTranscript', 'Original STT Output (Immutable):')}
+                    {t(
+                      'voiceNotes.originalTranscript',
+                      'Original STT Output (Immutable):'
+                    )}
                   </Text>
                   <Text style={styles.origText}>{note.original_transcript}</Text>
                 </View>
@@ -307,7 +342,11 @@ export const VoiceNoteCard: React.FC<VoiceNoteCardProps> = ({
                 style={styles.footerBtn}
               />
               <Button
-                title={isUpdating ? 'Saving...' : t('voiceNotes.saveTranscript', 'Save Transcript')}
+                title={
+                  isUpdating
+                    ? 'Saving...'
+                    : t('voiceNotes.saveTranscript', 'Save Transcript')
+                }
                 onPress={handleSaveEdit}
                 variant="primary"
                 loading={isUpdating}
@@ -365,7 +404,7 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   mockText: {
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: '700',
     color: '#b45309',
   },
@@ -378,18 +417,18 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   langBadgeText: {
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: '700',
     color: Colors.text.secondary,
   },
   statusChip: {
     borderWidth: 1,
     paddingHorizontal: 8,
-    paddingVertical: 2,
+    paddingVertical: 3,
     borderRadius: 12,
   },
   statusText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '600',
   },
   playerBar: {
@@ -408,11 +447,6 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  playBtnText: {
-    color: Colors.text.white,
-    fontSize: 16,
-    fontWeight: 'bold',
   },
   progressContainer: {
     flex: 1,
@@ -433,7 +467,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   timeText: {
-    fontSize: 11,
+    fontSize: 12,
     color: Colors.text.muted,
   },
   transcriptBox: {
@@ -484,6 +518,11 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     paddingHorizontal: 8,
   },
+  actionInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
   actionBtnText: {
     fontSize: 12,
     color: Colors.primary,
@@ -491,12 +530,12 @@ const styles = StyleSheet.create({
   },
   deleteBtnText: {
     fontSize: 12,
-    color: '#dc2626',
+    color: Colors.danger,
     fontWeight: '600',
   },
   modalBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: Colors.overlay,
     justifyContent: 'center',
     padding: 16,
   },
@@ -517,10 +556,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: Colors.text.primary,
-  },
-  closeText: {
-    fontSize: 18,
-    color: Colors.text.muted,
   },
   modalBody: {
     padding: 16,
@@ -553,7 +588,7 @@ const styles = StyleSheet.create({
     borderColor: '#e2e8f0',
   },
   origLabel: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
     color: '#64748b',
     marginBottom: 4,

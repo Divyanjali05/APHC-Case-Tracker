@@ -219,6 +219,16 @@ class DashboardNotificationItemSerializer(serializers.Serializer):
     case_id = serializers.IntegerField(allow_null=True)
 
 
+class DashboardActivityItemSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    case_id = serializers.IntegerField()
+    case_number = serializers.CharField()
+    event_type = serializers.CharField()
+    description = serializers.CharField()
+    source = serializers.CharField()
+    created_at = serializers.DateTimeField()
+
+
 class DashboardSyncStatusSerializer(serializers.Serializer):
     last_synced_at = serializers.DateTimeField(allow_null=True)
     is_fresh = serializers.BooleanField()
@@ -231,6 +241,7 @@ class DashboardResponseSerializer(serializers.Serializer):
     upcoming_hearings = DashboardHearingItemSerializer(many=True)
     upcoming_reminders = DashboardReminderItemSerializer(many=True)
     recent_notifications = DashboardNotificationItemSerializer(many=True)
+    recent_activity = DashboardActivityItemSerializer(many=True)
     sync_status = DashboardSyncStatusSerializer()
 
 

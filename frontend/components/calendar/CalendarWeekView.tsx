@@ -1,11 +1,5 @@
 import React, { useState } from 'react';
-import {
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { Colors } from '../../constants/colors';
 import { Badge } from '../common/Badge';
@@ -56,7 +50,7 @@ export const CalendarWeekView: React.FC<CalendarWeekViewProps> = ({
     <View style={styles.container} testID="calendar-week-view">
       {/* 7-day strip */}
       <View style={styles.weekStrip}>
-        {days.map((item) => {
+        {days.map(item => {
           const isSelected = item.dateStr === activeDate;
           const count = (eventsByDate[item.dateStr] || []).length;
 
@@ -70,14 +64,10 @@ export const CalendarWeekView: React.FC<CalendarWeekViewProps> = ({
                 onSelectDate(item.dateStr);
               }}
             >
-              <Text
-                style={[styles.dayName, isSelected && styles.dayTextActive]}
-              >
+              <Text style={[styles.dayName, isSelected && styles.dayTextActive]}>
                 {item.dayName}
               </Text>
-              <Text
-                style={[styles.dayNum, isSelected && styles.dayTextActive]}
-              >
+              <Text style={[styles.dayNum, isSelected && styles.dayTextActive]}>
                 {item.dayNum}
               </Text>
               {count > 0 ? (
@@ -95,13 +85,17 @@ export const CalendarWeekView: React.FC<CalendarWeekViewProps> = ({
       {/* Events List for selected day */}
       <ScrollView style={styles.eventsScroll}>
         <Text style={styles.selectedDayTitle}>
-          {t('calendar.agenda_for', 'Agenda for')} {activeDate} ({currentDayEvents.length})
+          {t('calendar.agenda_for', 'Agenda for')} {activeDate} ({currentDayEvents.length}
+          )
         </Text>
 
         {currentDayEvents.length === 0 ? (
           <View style={styles.emptyContainer} testID="week-view-empty">
             <Text style={styles.emptyText}>
-              {t('calendar.no_events_on_date', 'No court appearances or reminders for this date.')}
+              {t(
+                'calendar.no_events_on_date',
+                'No court appearances or reminders for this date.'
+              )}
             </Text>
           </View>
         ) : (
@@ -127,13 +121,17 @@ export const CalendarWeekView: React.FC<CalendarWeekViewProps> = ({
 
                   {isHearing && (ev as AgendaHearingItem).court_hall_number ? (
                     <Text style={styles.detailText}>
-                      Hall {(ev as AgendaHearingItem).court_hall_number} • {(ev as AgendaHearingItem).hearing_time || 'All Day'}
+                      Hall {(ev as AgendaHearingItem).court_hall_number} •{' '}
+                      {(ev as AgendaHearingItem).hearing_time || 'All Day'}
                     </Text>
                   ) : null}
 
                   {!isHearing && !isToken && (ev as AgendaReminderItem).due_date ? (
                     <Text style={styles.detailText}>
-                      Due: {(ev as AgendaReminderItem).due_date.replace('T', ' ').substring(0, 16)}
+                      Due:{' '}
+                      {(ev as AgendaReminderItem).due_date
+                        .replace('T', ' ')
+                        .substring(0, 16)}
                     </Text>
                   ) : null}
                 </Card>
@@ -169,7 +167,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary,
   },
   dayName: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '600',
     color: Colors.text.secondary,
     marginBottom: 4,
@@ -185,14 +183,16 @@ const styles = StyleSheet.create({
   eventDotBadge: {
     marginTop: 4,
     backgroundColor: Colors.gold,
-    borderRadius: 8,
-    paddingHorizontal: 5,
-    paddingVertical: 1,
+    borderRadius: 10,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    minWidth: 20,
+    alignItems: 'center',
   },
   eventDotText: {
-    fontSize: 9,
+    fontSize: 12,
     fontWeight: '700',
-    color: Colors.surface,
+    color: Colors.text.white,
   },
   eventDotPlaceholder: {
     height: 14,

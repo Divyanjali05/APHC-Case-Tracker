@@ -109,7 +109,7 @@ def seed():
             "order_number": "ORD-2024-2002",
             "bench": "Hon'ble Sri Justice K. Sharma",
             "summary": "Municipal assessment quashed for lack of statutory notice under AP Municipalities Act.",
-            "document_link": "https://example.com/judgments/wp2002_2024.pdf",
+            "document_link": "",
         },
     )
 

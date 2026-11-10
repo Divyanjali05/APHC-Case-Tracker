@@ -80,9 +80,13 @@ class NotificationHistory(models.Model):
     )
     title = models.CharField(max_length=200)
     body = models.TextField()
-    category = models.CharField(max_length=40, choices=CATEGORY_CHOICES, default="GENERAL", db_index=True)
+    category = models.CharField(
+        max_length=40, choices=CATEGORY_CHOICES, default="GENERAL", db_index=True
+    )
     data_payload = models.JSONField(default=dict, blank=True)
-    delivery_status = models.CharField(max_length=30, choices=STATUS_CHOICES, default="QUEUED", db_index=True)
+    delivery_status = models.CharField(
+        max_length=30, choices=STATUS_CHOICES, default="QUEUED", db_index=True
+    )
     idempotency_key = models.CharField(max_length=150, blank=True, null=True, db_index=True)
     is_read = models.BooleanField(default=False)
     sent_at = models.DateTimeField(auto_now_add=True)

@@ -1,10 +1,15 @@
 import { z } from 'zod';
 
+export const BAR_COUNCIL_ID_REGEX = /^[A-Za-z]{2}\/\d{1,6}\/\d{4}$/;
+export const IDENTIFIER_REGEX =
+  /^(?:[A-Za-z]{2}\/\d{1,6}\/\d{4}|[A-Za-z0-9._@-]{3,150})$/;
+
 export const loginSchema = z.object({
   enrollmentNumber: z
     .string()
+    .trim()
     .min(1, 'Enrollment number is required')
-    .regex(/^[A-Za-z]{2}\/\d{1,6}\/\d{4}$/, 'Format must be AP/1234/2020'),
+    .regex(IDENTIFIER_REGEX, 'Enter a valid Bar Council ID (AP/1234/2020) or username'),
   password: z.string().min(6, 'Password must be at least 6 characters'),
 });
 

@@ -318,4 +318,3 @@ describe('TokensScreen & Token Alerts Integration', () => {
     expect(mockMutateCreate).not.toHaveBeenCalled();
   });
 });
-

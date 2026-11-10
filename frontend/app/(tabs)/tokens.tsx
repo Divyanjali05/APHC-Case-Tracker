@@ -6,17 +6,21 @@ import {
   FlatList,
   RefreshControl,
   TouchableOpacity,
+  useWindowDimensions,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { ScreenContainer } from '../../components/common/ScreenContainer';
 import { CourtHallCard } from '../../components/tokens/CourtHallCard';
 import { TokenAlertCard } from '../../components/tokens/TokenAlertCard';
 import { RegisterTokenModal } from '../../components/tokens/RegisterTokenModal';
-import { LoadingIndicator } from '../../components/common/LoadingIndicator';
+import { SkeletonCard } from '../../components/common/SkeletonCard';
+import { ErrorState } from '../../components/common/ErrorState';
 import { EmptyState } from '../../components/common/EmptyState';
 import { Badge } from '../../components/common/Badge';
 import { Button } from '../../components/common/Button';
+import { useToast } from '../../components/common/Toast';
 import { Colors } from '../../constants/colors';
+import { Radius, Shadows, Spacing } from '../../constants/theme';
 import {
   useCourtHalls,
   useTokenAlerts,
@@ -31,6 +35,10 @@ type TokenTab = 'alerts' | 'halls';
 
 export default function TokensScreen() {
   const { t } = useTranslation();
+  const { width } = useWindowDimensions();
+  const isDesktop = width >= 960;
+  const { showToast } = useToast();
+
   const [activeTab, setActiveTab] = useState<TokenTab>('alerts');
   const [isRegisterModalVisible, setIsRegisterModalVisible] = useState(false);
   const [cancellingId, setCancellingId] = useState<number | null>(null);
@@ -60,12 +68,14 @@ export default function TokensScreen() {
 
   const handleRegisterSubmit = async (payload: CreateTokenAlertPayload) => {
     await createAlertMutation.mutateAsync(payload);
+    showToast('Token alert registered.', 'success');
   };
 
   const handleCancelAlert = async (id: number) => {
     try {
       setCancellingId(id);
       await cancelAlertMutation.mutateAsync(id);
+      showToast('Token alert cancelled.', 'info');
     } finally {
       setCancellingId(null);
     }
@@ -75,6 +85,7 @@ export default function TokensScreen() {
     try {
       setSyncingId(id);
       await syncAlertMutation.mutateAsync(id);
+      showToast('Token board status refreshed.', 'info');
     } finally {
       setSyncingId(null);
     }
@@ -82,152 +93,156 @@ export default function TokensScreen() {
 
   return (
     <ScreenContainer testID="tokens-screen">
-      {/* Tab Switcher */}
-      <View style={styles.tabContainer}>
-        <TouchableOpacity
-          style={[styles.tabButton, activeTab === 'alerts' && styles.tabButtonActive]}
-          onPress={() => setActiveTab('alerts')}
-          testID="my-alerts-tab"
-        >
-          <Text
-            style={[
-              styles.tabButtonText,
-              activeTab === 'alerts' && styles.tabButtonTextActive,
-            ]}
+      <View style={[styles.mainWrapper, isDesktop && styles.desktopContainer]}>
+        {/* Tab Switcher */}
+        <View style={styles.tabContainer}>
+          <TouchableOpacity
+            style={[styles.tabButton, activeTab === 'alerts' && styles.tabButtonActive]}
+            onPress={() => setActiveTab('alerts')}
+            testID="my-alerts-tab"
           >
-            My Token Alerts {alerts.length > 0 ? `(${alerts.length})` : ''}
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.tabButton, activeTab === 'halls' && styles.tabButtonActive]}
-          onPress={() => setActiveTab('halls')}
-          testID="court-halls-tab"
-        >
-          <Text
-            style={[
-              styles.tabButtonText,
-              activeTab === 'halls' && styles.tabButtonTextActive,
-            ]}
-          >
-            Live Court Halls
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Tab 1: My Token Alerts */}
-      {activeTab === 'alerts' && (
-        <View style={styles.tabContent}>
-          {/* Header row with register button */}
-          <View style={styles.alertsHeaderRow}>
-            <View style={styles.demoNoticeBadge}>
-              <Badge label="DEMO / MOCK DATA SOURCE" variant="gold" />
-            </View>
-            <Button
-              title="+ Register Token"
-              variant="primary"
-              onPress={() => setIsRegisterModalVisible(true)}
-              style={styles.registerBtn}
-              testID="register-token-button"
-            />
-          </View>
-
-          {isAlertsLoading ? (
-            <LoadingIndicator message="Loading court token alerts..." />
-          ) : isAlertsError ? (
-            <EmptyState
-              title="Failed to Load Alerts"
-              description="Unable to connect to the token alert service. Please verify network or retry."
-              actionLabel={t('common.retry', 'Retry')}
-              onAction={() => refetchAlerts()}
-              testID="alerts-error-state"
-            />
-          ) : alerts.length === 0 ? (
-            <EmptyState
-              title="No Active Token Alerts"
-              description="You have not registered any court hall token alerts. Register a token number to receive approach and call alerts."
-              actionLabel="+ Register Token Alert"
-              onAction={() => setIsRegisterModalVisible(true)}
-              testID="empty-alerts-state"
-            />
-          ) : (
-            <FlatList
-              data={alerts}
-              keyExtractor={item => item.id.toString()}
-              renderItem={({ item }) => (
-                <TokenAlertCard
-                  item={item}
-                  onCancel={handleCancelAlert}
-                  onSync={handleSyncAlert}
-                  isCancelling={cancellingId === item.id}
-                  isSyncing={syncingId === item.id}
-                />
-              )}
-              contentContainerStyle={styles.listContent}
-              showsVerticalScrollIndicator={false}
-              refreshControl={
-                <RefreshControl
-                  refreshing={isAlertsRefetching}
-                  onRefresh={refetchAlerts}
-                  tintColor={Colors.primaryLight}
-                  colors={[Colors.primary]}
-                />
-              }
-              testID="token-alerts-list"
-            />
-          )}
-        </View>
-      )}
-
-      {/* Tab 2: Live Court Halls */}
-      {activeTab === 'halls' && (
-        <View style={styles.tabContent}>
-          <View style={styles.topInfo}>
-            <View style={styles.badgeRow}>
-              <Badge label="LIVE CAUSE BOARD" variant="gold" />
-              <Text style={styles.autoRefreshText}>Auto-refreshes every 15s</Text>
-            </View>
-            <Text style={styles.subtext}>
-              High Court of Andhra Pradesh active court hall token and cause list item tracker.
+            <Text
+              style={[
+                styles.tabButtonText,
+                activeTab === 'alerts' && styles.tabButtonTextActive,
+              ]}
+            >
+              My Token Alerts {alerts.length > 0 ? `(${alerts.length})` : ''}
             </Text>
-          </View>
+          </TouchableOpacity>
 
-          {isHallsLoading ? (
-            <LoadingIndicator message="Fetching live court hall status..." />
-          ) : isHallsError ? (
-            <EmptyState
-              title="Could Not Connect to Display Board"
-              description="Unable to fetch live court hall boards. Please verify backend status."
-              actionLabel={t('common.retry', 'Retry')}
-              onAction={() => refetchHalls()}
-              testID="tokens-error-state"
-            />
-          ) : halls.length === 0 ? (
-            <EmptyState
-              title={t('tokens.empty', 'No Active Halls')}
-              description="Court halls are currently not in active session or recess is in effect."
-              testID="tokens-empty-state"
-            />
-          ) : (
-            <FlatList
-              data={halls}
-              keyExtractor={item => item.id.toString()}
-              renderItem={({ item }) => <CourtHallCard item={item} />}
-              contentContainerStyle={styles.listContent}
-              showsVerticalScrollIndicator={false}
-              refreshControl={
-                <RefreshControl
-                  refreshing={isHallsRefetching}
-                  onRefresh={refetchHalls}
-                  tintColor={Colors.primaryLight}
-                  colors={[Colors.primary]}
-                />
-              }
-              testID="tokens-list"
-            />
-          )}
+          <TouchableOpacity
+            style={[styles.tabButton, activeTab === 'halls' && styles.tabButtonActive]}
+            onPress={() => setActiveTab('halls')}
+            testID="court-halls-tab"
+          >
+            <Text
+              style={[
+                styles.tabButtonText,
+                activeTab === 'halls' && styles.tabButtonTextActive,
+              ]}
+            >
+              Live Court Halls
+            </Text>
+          </TouchableOpacity>
         </View>
-      )}
+
+        {/* Tab 1: My Token Alerts */}
+        {activeTab === 'alerts' && (
+          <View style={styles.tabContent}>
+            <View style={styles.alertsHeaderRow}>
+              <View style={styles.demoNoticeBadge}>
+                <Badge label="DEMO / MOCK DATA SOURCE" variant="gold" />
+              </View>
+              <Button
+                title="+ Register Token"
+                variant="primary"
+                onPress={() => setIsRegisterModalVisible(true)}
+                style={styles.registerBtn}
+                testID="register-token-button"
+              />
+            </View>
+
+            {isAlertsLoading ? (
+              <SkeletonCard variant="list-item" count={3} />
+            ) : isAlertsError ? (
+              <ErrorState
+                title="Failed to Load Alerts"
+                message="Unable to connect to the token alert service. Please verify network or retry."
+                retryLabel={t('common.retry', 'Retry')}
+                onRetry={() => refetchAlerts()}
+                testID="alerts-error-state"
+              />
+            ) : alerts.length === 0 ? (
+              <EmptyState
+                title="No Active Token Alerts"
+                description="You have not registered any court hall token alerts. Register a token number to receive approach and call alerts."
+                actionLabel="+ Register Token Alert"
+                onAction={() => setIsRegisterModalVisible(true)}
+                iconName="radio"
+                testID="empty-alerts-state"
+              />
+            ) : (
+              <FlatList
+                data={alerts}
+                keyExtractor={item => item.id.toString()}
+                renderItem={({ item }) => (
+                  <TokenAlertCard
+                    item={item}
+                    onCancel={handleCancelAlert}
+                    onSync={handleSyncAlert}
+                    isCancelling={cancellingId === item.id}
+                    isSyncing={syncingId === item.id}
+                  />
+                )}
+                contentContainerStyle={styles.listContent}
+                showsVerticalScrollIndicator={false}
+                refreshControl={
+                  <RefreshControl
+                    refreshing={isAlertsRefetching}
+                    onRefresh={refetchAlerts}
+                    tintColor={Colors.primary}
+                    colors={[Colors.primary]}
+                  />
+                }
+                testID="token-alerts-list"
+              />
+            )}
+          </View>
+        )}
+
+        {/* Tab 2: Live Court Halls */}
+        {activeTab === 'halls' && (
+          <View style={styles.tabContent}>
+            <View style={styles.topInfo}>
+              <View style={styles.badgeRow}>
+                <Badge label="LIVE CAUSE BOARD" variant="gold" />
+                <Text style={styles.autoRefreshText}>Auto-refreshes every 15s</Text>
+              </View>
+              <Text style={styles.subtext}>
+                High Court of Andhra Pradesh active court hall token and cause list item
+                tracker.
+              </Text>
+            </View>
+
+            {isHallsLoading ? (
+              <SkeletonCard variant="list-item" count={3} />
+            ) : isHallsError ? (
+              <ErrorState
+                title="Could Not Connect to Display Board"
+                message="Unable to fetch live court hall boards. Please verify backend status."
+                retryLabel={t('common.retry', 'Retry')}
+                onRetry={() => refetchHalls()}
+                testID="tokens-error-state"
+              />
+            ) : halls.length === 0 ? (
+              <EmptyState
+                title={t('tokens.empty', 'No Active Halls')}
+                description="Court halls are currently not in active session or recess is in effect."
+                iconName="landmark"
+                testID="tokens-empty-state"
+              />
+            ) : (
+              <FlatList
+                data={halls}
+                keyExtractor={item => item.id.toString()}
+                renderItem={({ item }) => <CourtHallCard item={item} />}
+                contentContainerStyle={styles.listContent}
+                showsVerticalScrollIndicator={false}
+                refreshControl={
+                  <RefreshControl
+                    refreshing={isHallsRefetching}
+                    onRefresh={refetchHalls}
+                    tintColor={Colors.primary}
+                    colors={[Colors.primary]}
+                  />
+                }
+                testID="tokens-list"
+              />
+            )}
+          </View>
+        )}
+      </View>
 
       {/* Registration Modal */}
       <RegisterTokenModal
@@ -243,20 +258,32 @@ export default function TokensScreen() {
 }
 
 const styles = StyleSheet.create({
+  mainWrapper: {
+    flex: 1,
+    width: '100%',
+  },
+  desktopContainer: {
+    maxWidth: 1120,
+    alignSelf: 'center',
+    width: '100%',
+  },
   tabContainer: {
     flexDirection: 'row',
-    backgroundColor: Colors.surfaceSubtle,
-    borderRadius: 12,
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.card,
     padding: 4,
-    marginBottom: 16,
+    marginBottom: Spacing.lg,
     borderWidth: 1,
     borderColor: Colors.border,
+    ...Shadows.subtle,
   },
   tabButton: {
     flex: 1,
     paddingVertical: 10,
     alignItems: 'center',
-    borderRadius: 8,
+    justifyContent: 'center',
+    borderRadius: Radius.badge + 2,
+    minHeight: 44,
   },
   tabButtonActive: {
     backgroundColor: Colors.primary,
@@ -276,29 +303,31 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
+    marginBottom: Spacing.md,
   },
   demoNoticeBadge: {
-    flex: 1,
-    marginRight: 12,
+    flexShrink: 1,
   },
   registerBtn: {
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: 8,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.lg,
+    borderRadius: Radius.button,
+    minHeight: 42,
   },
   topInfo: {
-    marginBottom: 16,
+    marginBottom: Spacing.lg,
   },
   badgeRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: Spacing.sm,
   },
   autoRefreshText: {
     color: Colors.text.muted,
-    fontSize: 11,
+    fontSize: 12,
     fontStyle: 'italic',
   },
   subtext: {
@@ -307,6 +336,6 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   listContent: {
-    paddingBottom: 24,
+    paddingBottom: Spacing.xl,
   },
 });

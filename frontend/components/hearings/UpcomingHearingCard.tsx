@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Card } from '../common/Card';
 import { Badge } from '../common/Badge';
 import { Button } from '../common/Button';
+import { AppIcon } from '../common/AppIcon';
 import { Colors } from '../../constants/colors';
 import { HearingItem } from '../../types';
 import { formatDate } from '../../utils/formatters';
@@ -107,11 +108,14 @@ export const UpcomingHearingCard: React.FC<UpcomingHearingCardProps> = ({
           style={styles.rescheduledBox}
           testID={`hearing-rescheduled-info-${item.id}`}
         >
-          <Text style={styles.rescheduledText}>
-            🔄 {t('hearings.previouslyListed', 'Prior Date')}:{' '}
-            {formatDate(item.previous_hearing_date)}{' '}
-            {item.previous_hearing_time ? `at ${item.previous_hearing_time}` : ''}
-          </Text>
+          <View style={styles.rescheduledHeader}>
+            <AppIcon name="refresh" size={13} color={Colors.gold} />
+            <Text style={styles.rescheduledText}>
+              {t('hearings.previouslyListed', 'Prior Date')}:{' '}
+              {formatDate(item.previous_hearing_date)}{' '}
+              {item.previous_hearing_time ? `at ${item.previous_hearing_time}` : ''}
+            </Text>
+          </View>
           {item.rescheduled_reason ? (
             <Text style={styles.reasonText}>
               {t('hearings.reason', 'Reason')}: {item.rescheduled_reason}
@@ -179,7 +183,7 @@ const styles = StyleSheet.create({
   },
   detailLabel: {
     color: Colors.text.muted,
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '600',
     marginBottom: 2,
   },
@@ -189,13 +193,18 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   rescheduledBox: {
-    backgroundColor: 'rgba(245, 158, 11, 0.1)',
+    backgroundColor: Colors.goldSurface,
     borderLeftWidth: 3,
     borderLeftColor: Colors.gold,
     borderRadius: 6,
     padding: 8,
     marginTop: 6,
     marginBottom: 8,
+  },
+  rescheduledHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   rescheduledText: {
     color: Colors.gold,
@@ -204,14 +213,14 @@ const styles = StyleSheet.create({
   },
   reasonText: {
     color: Colors.text.secondary,
-    fontSize: 11,
+    fontSize: 12,
     marginTop: 2,
     fontStyle: 'italic',
   },
   footer: {
     marginTop: 8,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(51, 65, 85, 0.5)',
+    borderTopColor: Colors.border,
     paddingTop: 8,
   },
   rescheduleBtn: {

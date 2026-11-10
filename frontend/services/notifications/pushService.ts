@@ -1,12 +1,10 @@
 import { Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import * as SecureStore from 'expo-secure-store';
+import Constants from 'expo-constants';
 import { apiClient } from '../api/client';
 import { ENDPOINTS } from '../api/endpoints';
-import {
-  DeviceDeactivationPayload,
-  DeviceRegistrationPayload,
-} from '../../types';
+import { DeviceDeactivationPayload, DeviceRegistrationPayload } from '../../types';
 
 const DEVICE_ID_KEY = 'aphc_device_identifier';
 const LAST_TOKEN_KEY = 'aphc_registered_push_token';
@@ -29,7 +27,8 @@ export const pushNotificationService = {
     if (Platform.OS === 'android') {
       await Notifications.setNotificationChannelAsync(APHC_NOTIFICATION_CHANNEL_ID, {
         name: 'APHC High Court Alerts',
-        description: 'Instant hearing calls, cause list tokens, and court docket updates.',
+        description:
+          'Instant hearing calls, cause list tokens, and court docket updates.',
         importance: Notifications.AndroidImportance.MAX,
         vibrationPattern: [0, 250, 250, 250],
         lightColor: '#D4AF37', // Gold accent
@@ -80,7 +79,17 @@ export const pushNotificationService = {
       // Configure Android channel
       await this.setupNotificationChannels();
 
-      const tokenData = await Notifications.getExpoPushTokenAsync();
+      const projectId =
+        Constants?.expoConfig?.extra?.eas?.projectId ?? Constants?.easConfig?.projectId;
+
+      if (!projectId) {
+        console.warn(
+          '[pushService] EAS projectId is not configured in app.json. Push token registration skipped.'
+        );
+        return null;
+      }
+
+      const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
       const token = tokenData.data;
       if (!token) {
         return null;
@@ -150,9 +159,10 @@ export const pushNotificationService = {
   /**
    * Resolve deep link destination from notification data payload.
    */
-  resolveNavigationRoute(
-    data?: Record<string, unknown>
-  ): { pathname: string; params?: Record<string, string> } {
+  resolveNavigationRoute(data?: Record<string, unknown>): {
+    pathname: string;
+    params?: Record<string, string>;
+  } {
     if (!data) {
       return { pathname: '/(tabs)' };
     }

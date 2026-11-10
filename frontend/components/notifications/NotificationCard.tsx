@@ -132,8 +132,8 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surface,
   },
   unreadCard: {
-    borderColor: '#3B82F6',
-    backgroundColor: '#0B1528',
+    borderColor: Colors.infoBorder,
+    backgroundColor: Colors.surfaceBlue,
   },
   headerRow: {
     flexDirection: 'row',
@@ -150,10 +150,10 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#3B82F6',
+    backgroundColor: Colors.accent,
   },
   timestamp: {
-    fontSize: 11,
+    fontSize: 12,
     color: Colors.text.muted,
   },
   title: {
@@ -163,7 +163,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   unreadTitle: {
-    color: '#F8FAFC',
+    color: Colors.primary,
     fontWeight: '700',
   },
   body: {
@@ -180,14 +180,16 @@ const styles = StyleSheet.create({
     borderTopColor: Colors.border,
   },
   markReadButton: {
-    paddingVertical: 4,
-    paddingHorizontal: 10,
-    borderRadius: 4,
-    backgroundColor: '#1E293B',
+    paddingVertical: 5,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
   markReadText: {
     fontSize: 12,
-    color: '#93C5FD',
+    color: Colors.primary,
     fontWeight: '600',
   },
 });

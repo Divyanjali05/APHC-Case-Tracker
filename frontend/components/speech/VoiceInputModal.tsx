@@ -14,6 +14,7 @@ import { useTranslation } from 'react-i18next';
 import { Colors } from '../../constants/colors';
 import { Badge } from '../common/Badge';
 import { Button } from '../common/Button';
+import { AppIcon } from '../common/AppIcon';
 import {
   speechRecognitionService,
   VoiceLanguage,
@@ -299,7 +300,7 @@ export const VoiceInputModal: React.FC<VoiceInputModalProps> = ({
               testID="voice-close-modal"
               accessibilityLabel="Close voice modal"
             >
-              <Text style={styles.closeText}>✕</Text>
+              <AppIcon name="x" size={18} color={Colors.text.secondary} />
             </TouchableOpacity>
           </View>
 
@@ -444,7 +445,11 @@ export const VoiceInputModal: React.FC<VoiceInputModalProps> = ({
               }
               accessibilityRole="button"
             >
-              <Text style={styles.micIcon}>{uiState === 'LISTENING' ? '⏹' : '🎤'}</Text>
+              <AppIcon
+                name={uiState === 'LISTENING' ? 'square' : 'mic'}
+                size={24}
+                color={uiState === 'LISTENING' ? Colors.text.white : Colors.primary}
+              />
             </TouchableOpacity>
             <Text style={styles.micSubLabel}>
               {uiState === 'LISTENING'
@@ -558,7 +563,7 @@ export const VoiceInputModal: React.FC<VoiceInputModalProps> = ({
 const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    backgroundColor: Colors.overlay,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 16,
@@ -585,11 +590,12 @@ const styles = StyleSheet.create({
     color: Colors.text.primary,
   },
   closeButton: {
-    padding: 6,
-  },
-  closeText: {
-    fontSize: 18,
-    color: Colors.text.muted,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: Colors.surfaceSubtle,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   languageContainer: {
     marginBottom: 14,
@@ -661,9 +667,9 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   pulseRingActive: {
-    backgroundColor: 'rgba(37, 99, 235, 0.25)',
+    backgroundColor: 'rgba(37, 99, 235, 0.16)',
     borderWidth: 2,
-    borderColor: Colors.primaryLight,
+    borderColor: Colors.accentLight,
   },
   micButton: {
     width: 64,
@@ -674,7 +680,7 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   micButtonIdle: {
-    backgroundColor: Colors.surfaceSubtle,
+    backgroundColor: Colors.surfaceBlue,
     borderWidth: 2,
     borderColor: Colors.primary,
   },
@@ -683,13 +689,9 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: Colors.gold,
   },
-  micIcon: {
-    fontSize: 26,
-    color: Colors.text.white,
-  },
   micSubLabel: {
     marginTop: 8,
-    fontSize: 11,
+    fontSize: 12,
     color: Colors.text.muted,
   },
   transcriptSection: {
@@ -702,7 +704,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   clearTextLink: {
-    fontSize: 11,
+    fontSize: 12,
     color: Colors.gold,
     fontWeight: '600',
   },
@@ -730,7 +732,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   suggestionLabel: {
-    fontSize: 11,
+    fontSize: 12,
     color: Colors.text.muted,
   },
   suggestionValue: {
@@ -743,7 +745,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   hintText: {
-    fontSize: 11,
+    fontSize: 12,
     color: Colors.text.muted,
     fontStyle: 'italic',
   },

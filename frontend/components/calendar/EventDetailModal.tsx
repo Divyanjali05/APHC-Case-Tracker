@@ -10,6 +10,7 @@ import {
 import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Colors } from '../../constants/colors';
+import { AppIcon } from '../common/AppIcon';
 import { Badge } from '../common/Badge';
 import { Button } from '../common/Button';
 import {
@@ -75,8 +76,9 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
               testID="close-detail-modal-btn"
               onPress={onClose}
               style={styles.closeBtn}
+              accessibilityLabel={t('common.close', 'Close')}
             >
-              <Text style={styles.closeBtnText}>✕</Text>
+              <AppIcon name="x" size={18} color={Colors.text.secondary} />
             </TouchableOpacity>
           </View>
 
@@ -85,7 +87,9 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
             {hearing && (
               <View style={styles.section}>
                 <View style={styles.row}>
-                  <Text style={styles.label}>{t('calendar.case_no', 'Case Number')}:</Text>
+                  <Text style={styles.label}>
+                    {t('calendar.case_no', 'Case Number')}:
+                  </Text>
                   <Text style={styles.value}>{hearing.case_number}</Text>
                 </View>
                 {hearing.petitioner && hearing.respondent && (
@@ -97,9 +101,12 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
                   </View>
                 )}
                 <View style={styles.row}>
-                  <Text style={styles.label}>{t('calendar.court_hall', 'Court Hall')}:</Text>
+                  <Text style={styles.label}>
+                    {t('calendar.court_hall', 'Court Hall')}:
+                  </Text>
                   <Text style={styles.value}>
-                    Hall {hearing.court_hall_number || '—'} (Item #{hearing.item_number || '—'})
+                    Hall {hearing.court_hall_number || '—'} (Item #
+                    {hearing.item_number || '—'})
                   </Text>
                 </View>
                 {hearing.bench ? (
@@ -109,9 +116,12 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
                   </View>
                 ) : null}
                 <View style={styles.row}>
-                  <Text style={styles.label}>{t('calendar.date_time', 'Date & Time')}:</Text>
+                  <Text style={styles.label}>
+                    {t('calendar.date_time', 'Date & Time')}:
+                  </Text>
                   <Text style={styles.value}>
-                    {hearing.hearing_date} • {hearing.hearing_time || t('calendar.all_day', 'All Day Session')}
+                    {hearing.hearing_date} •{' '}
+                    {hearing.hearing_time || t('calendar.all_day', 'All Day Session')}
                   </Text>
                 </View>
                 <View style={styles.row}>
@@ -120,7 +130,9 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
                 </View>
                 {hearing.business_conducted ? (
                   <View style={styles.blockSection}>
-                    <Text style={styles.label}>{t('calendar.proceedings', 'Proceedings')}:</Text>
+                    <Text style={styles.label}>
+                      {t('calendar.proceedings', 'Proceedings')}:
+                    </Text>
                     <Text style={styles.bodyText}>{hearing.business_conducted}</Text>
                   </View>
                 ) : null}
@@ -137,12 +149,16 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
                 <View style={styles.row}>
                   <Text style={styles.label}>{t('calendar.due_date', 'Due Date')}:</Text>
                   <Text style={styles.value}>
-                    {reminder.due_date ? reminder.due_date.replace('T', ' ').substring(0, 16) : reminder.date}
+                    {reminder.due_date
+                      ? reminder.due_date.replace('T', ' ').substring(0, 16)
+                      : reminder.date}
                   </Text>
                 </View>
                 {reminder.case_number ? (
                   <View style={styles.row}>
-                    <Text style={styles.label}>{t('calendar.case_no', 'Case Number')}:</Text>
+                    <Text style={styles.label}>
+                      {t('calendar.case_no', 'Case Number')}:
+                    </Text>
                     <Text style={styles.value}>{reminder.case_number}</Text>
                   </View>
                 ) : null}
@@ -165,29 +181,40 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
             {token && (
               <View style={styles.section}>
                 <View style={styles.row}>
-                  <Text style={styles.label}>{t('calendar.token_number', 'Token Number')}:</Text>
+                  <Text style={styles.label}>
+                    {t('calendar.token_number', 'Token Number')}:
+                  </Text>
                   <Text style={styles.value}>#{token.token_number}</Text>
                 </View>
                 <View style={styles.row}>
-                  <Text style={styles.label}>{t('calendar.court_hall', 'Court Hall')}:</Text>
+                  <Text style={styles.label}>
+                    {t('calendar.court_hall', 'Court Hall')}:
+                  </Text>
                   <Text style={styles.value}>Hall {token.court_hall_number}</Text>
                 </View>
                 <View style={styles.row}>
-                  <Text style={styles.label}>{t('calendar.hearing_date', 'Hearing Date')}:</Text>
+                  <Text style={styles.label}>
+                    {t('calendar.hearing_date', 'Hearing Date')}:
+                  </Text>
                   <Text style={styles.value}>{token.hearing_date}</Text>
                 </View>
                 <View style={styles.row}>
                   <Text style={styles.label}>{t('calendar.status', 'Status')}:</Text>
                   <Text style={styles.value}>{token.status}</Text>
                 </View>
-                {token.items_remaining !== undefined && token.items_remaining !== null && (
-                  <View style={styles.row}>
-                    <Text style={styles.label}>{t('calendar.lead_count', 'Items Remaining')}:</Text>
-                    <Text style={[styles.value, { color: Colors.gold, fontWeight: '700' }]}>
-                      {token.items_remaining} items
-                    </Text>
-                  </View>
-                )}
+                {token.items_remaining !== undefined &&
+                  token.items_remaining !== null && (
+                    <View style={styles.row}>
+                      <Text style={styles.label}>
+                        {t('calendar.lead_count', 'Items Remaining')}:
+                      </Text>
+                      <Text
+                        style={[styles.value, { color: Colors.gold, fontWeight: '700' }]}
+                      >
+                        {token.items_remaining} items
+                      </Text>
+                    </View>
+                  )}
               </View>
             )}
           </ScrollView>
@@ -220,7 +247,7 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.7)',
+    backgroundColor: Colors.overlay,
     justifyContent: 'flex-end',
   },
   modalContent: {
@@ -252,13 +279,12 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   closeBtn: {
-    padding: 6,
-    borderRadius: 8,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: Colors.surfaceSubtle,
-  },
-  closeBtnText: {
-    fontSize: 16,
-    color: Colors.text.secondary,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   body: {
     marginBottom: 16,
@@ -304,4 +330,3 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 });
-

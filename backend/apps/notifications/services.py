@@ -127,7 +127,9 @@ class NotificationService:
                 "platform": clean_platform,
                 "device_id": device_id.strip() if device_id else "",
                 "app_version": app_version.strip() if app_version else "",
-                "device_name": device_name.strip() if device_name else f"{clean_platform.capitalize()} Device",
+                "device_name": device_name.strip()
+                if device_name
+                else f"{clean_platform.capitalize()} Device",
                 "is_active": True,
                 "failure_count": 0,
                 "last_seen_at": timezone.now(),
@@ -173,9 +175,7 @@ class NotificationService:
         permanent_errors: list[str] = []
 
         push_title, push_body = (
-            sanitize_push_payload(title, body, category)
-            if is_sensitive
-            else (title, body)
+            sanitize_push_payload(title, body, category) if is_sensitive else (title, body)
         )
 
         for device in devices:

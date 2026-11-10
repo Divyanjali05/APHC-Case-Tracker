@@ -1,11 +1,5 @@
 import React, { useState } from 'react';
-import {
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { Colors } from '../../constants/colors';
 import { Badge } from '../common/Badge';
@@ -95,9 +89,7 @@ export const CalendarMonthView: React.FC<CalendarMonthViewProps> = ({
                   onSelectDate(dateStr);
                 }}
               >
-                <Text
-                  style={[styles.dayNumText, isSelected && styles.dayNumTextActive]}
-                >
+                <Text style={[styles.dayNumText, isSelected && styles.dayNumTextActive]}>
                   {dayNum}
                 </Text>
                 {eventCount > 0 ? (
@@ -114,13 +106,17 @@ export const CalendarMonthView: React.FC<CalendarMonthViewProps> = ({
       {/* Selected Day Agenda Listing */}
       <View style={styles.agendaSection}>
         <Text style={styles.sectionTitle}>
-          {t('calendar.agenda_for', 'Agenda for')} {activeDate} ({currentDayEvents.length})
+          {t('calendar.agenda_for', 'Agenda for')} {activeDate} ({currentDayEvents.length}
+          )
         </Text>
 
         {currentDayEvents.length === 0 ? (
           <View style={styles.emptyContainer} testID="month-view-empty">
             <Text style={styles.emptyText}>
-              {t('calendar.no_events_on_date', 'No court appearances or reminders for this date.')}
+              {t(
+                'calendar.no_events_on_date',
+                'No court appearances or reminders for this date.'
+              )}
             </Text>
           </View>
         ) : (
@@ -146,13 +142,17 @@ export const CalendarMonthView: React.FC<CalendarMonthViewProps> = ({
 
                   {isHearing && (ev as AgendaHearingItem).court_hall_number ? (
                     <Text style={styles.detailText}>
-                      Hall {(ev as AgendaHearingItem).court_hall_number} • {(ev as AgendaHearingItem).hearing_time || 'All Day'}
+                      Hall {(ev as AgendaHearingItem).court_hall_number} •{' '}
+                      {(ev as AgendaHearingItem).hearing_time || 'All Day'}
                     </Text>
                   ) : null}
 
                   {!isHearing && !isToken && (ev as AgendaReminderItem).due_date ? (
                     <Text style={styles.detailText}>
-                      Due: {(ev as AgendaReminderItem).due_date.replace('T', ' ').substring(0, 16)}
+                      Due:{' '}
+                      {(ev as AgendaReminderItem).due_date
+                        .replace('T', ' ')
+                        .substring(0, 16)}
                     </Text>
                   ) : null}
                 </Card>
@@ -270,4 +270,3 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
 });
-

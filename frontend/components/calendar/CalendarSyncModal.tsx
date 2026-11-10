@@ -10,12 +10,10 @@ import {
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { Colors } from '../../constants/colors';
+import { AppIcon } from '../common/AppIcon';
 import { Badge } from '../common/Badge';
 import { Button } from '../common/Button';
-import {
-  CalendarSyncConnectPayload,
-  CalendarSyncSettingItem,
-} from '../../types';
+import { CalendarSyncConnectPayload, CalendarSyncSettingItem } from '../../types';
 
 export interface CalendarSyncModalProps {
   visible: boolean;
@@ -77,11 +75,18 @@ export const CalendarSyncModal: React.FC<CalendarSyncModalProps> = ({
         <View style={styles.modalContent}>
           {/* Header */}
           <View style={styles.header}>
-            <Text style={styles.title}>
-              🔄 {t('calendar.sync_settings', 'Calendar Synchronization')}
-            </Text>
-            <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-              <Text style={styles.closeBtnText}>✕</Text>
+            <View style={styles.titleRow}>
+              <AppIcon name="refresh" size={18} color={Colors.primary} />
+              <Text style={styles.title}>
+                {t('calendar.sync_settings', 'Calendar Synchronization')}
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={onClose}
+              style={styles.closeBtn}
+              accessibilityLabel={t('common.close', 'Close')}
+            >
+              <AppIcon name="x" size={18} color={Colors.text.secondary} />
             </TouchableOpacity>
           </View>
 
@@ -91,7 +96,9 @@ export const CalendarSyncModal: React.FC<CalendarSyncModalProps> = ({
             {/* Current Sync Status */}
             <View style={styles.statusCard}>
               <View style={styles.statusRow}>
-                <Text style={styles.statusLabel}>{t('calendar.provider', 'Provider')}:</Text>
+                <Text style={styles.statusLabel}>
+                  {t('calendar.provider', 'Provider')}:
+                </Text>
                 <Text style={styles.statusValue}>{syncSetting?.provider || 'NONE'}</Text>
               </View>
               <View style={styles.statusRow}>
@@ -102,14 +109,16 @@ export const CalendarSyncModal: React.FC<CalendarSyncModalProps> = ({
                     syncSetting?.sync_status === 'SUCCESS'
                       ? 'success'
                       : syncSetting?.sync_status === 'FAILED'
-                      ? 'danger'
-                      : 'secondary'
+                        ? 'danger'
+                        : 'secondary'
                   }
                 />
               </View>
               {syncSetting?.last_synced_at ? (
                 <View style={styles.statusRow}>
-                  <Text style={styles.statusLabel}>{t('calendar.last_synced', 'Last Synced')}:</Text>
+                  <Text style={styles.statusLabel}>
+                    {t('calendar.last_synced', 'Last Synced')}:
+                  </Text>
                   <Text style={styles.statusValue}>
                     {syncSetting.last_synced_at.replace('T', ' ').substring(0, 16)}
                   </Text>
@@ -123,9 +132,12 @@ export const CalendarSyncModal: React.FC<CalendarSyncModalProps> = ({
                 <Text style={styles.sectionSubtitle}>
                   {t('calendar.connected_account', 'Connected Account')}
                 </Text>
-                <Text style={styles.accountEmail}>
-                  📧 {syncSetting?.google_account_email || 'Google Calendar'}
-                </Text>
+                <View style={styles.accountEmailRow}>
+                  <AppIcon name="mail" size={14} color={Colors.primaryLight} />
+                  <Text style={styles.accountEmail}>
+                    {syncSetting?.google_account_email || 'Google Calendar'}
+                  </Text>
+                </View>
 
                 <View style={styles.syncActions}>
                   <Button
@@ -157,7 +169,9 @@ export const CalendarSyncModal: React.FC<CalendarSyncModalProps> = ({
                   )}
                 </Text>
 
-                <Text style={styles.fieldLabel}>{t('calendar.google_email', 'Google Account Email')}</Text>
+                <Text style={styles.fieldLabel}>
+                  {t('calendar.google_email', 'Google Account Email')}
+                </Text>
                 <TextInput
                   testID="google-email-input"
                   style={styles.input}
@@ -182,9 +196,12 @@ export const CalendarSyncModal: React.FC<CalendarSyncModalProps> = ({
 
             {/* iCalendar (.ics) Export */}
             <View style={styles.exportSection}>
-              <Text style={styles.sectionSubtitle}>
-                📅 {t('calendar.ics_export_title', 'Offline iCalendar Export')}
-              </Text>
+              <View style={styles.titleRow}>
+                <AppIcon name="calendar" size={15} color={Colors.primary} />
+                <Text style={styles.sectionSubtitle}>
+                  {t('calendar.ics_export_title', 'Offline iCalendar Export')}
+                </Text>
+              </View>
               <Text style={styles.formHint}>
                 {t(
                   'calendar.ics_export_hint',
@@ -218,7 +235,7 @@ export const CalendarSyncModal: React.FC<CalendarSyncModalProps> = ({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.7)',
+    backgroundColor: Colors.overlay,
     justifyContent: 'flex-end',
   },
   modalContent: {
@@ -239,19 +256,24 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
   },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 2,
+  },
   title: {
     fontSize: 18,
     fontWeight: '700',
     color: Colors.text.primary,
   },
   closeBtn: {
-    padding: 6,
-    borderRadius: 8,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: Colors.surfaceSubtle,
-  },
-  closeBtnText: {
-    fontSize: 16,
-    color: Colors.text.secondary,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   body: {
     marginBottom: 16,
@@ -286,10 +308,15 @@ const styles = StyleSheet.create({
     color: Colors.text.primary,
     marginBottom: 6,
   },
+  accountEmailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 12,
+  },
   accountEmail: {
     fontSize: 14,
     color: Colors.primaryLight,
-    marginBottom: 12,
   },
   formHint: {
     fontSize: 12,
@@ -344,4 +371,3 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
 });
-

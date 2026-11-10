@@ -13,15 +13,17 @@ type SessionExpiredListener = () => void;
 const sessionExpiredListeners: Set<SessionExpiredListener> = new Set();
 
 // Register the API client trigger for session expiration
-setSessionExpiredHandler(() => {
-  sessionExpiredListeners.forEach(listener => {
-    try {
-      listener();
-    } catch {
-      // Suppress listener callback failure
-    }
+if (typeof setSessionExpiredHandler === 'function') {
+  setSessionExpiredHandler(() => {
+    sessionExpiredListeners.forEach(listener => {
+      try {
+        listener();
+      } catch {
+        // Suppress listener callback failure
+      }
+    });
   });
-});
+}
 
 export const authService = {
   /**

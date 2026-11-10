@@ -90,5 +90,15 @@ export const ENDPOINTS = {
     SYNC_TRIGGER: '/calendar/sync/trigger/',
     SYNC_DISCONNECT: '/calendar/sync/disconnect/',
   },
+  ADMIN: {
+    DASHBOARD: '/admin/dashboard/',
+    USERS: '/admin/users/',
+    USER_DETAIL: (id: number | string) => `/admin/users/${id}/`,
+    CASES: '/admin/cases/',
+    CASE_ASSIGN: (caseId: number | string) => `/admin/cases/${caseId}/assign/`,
+    CASE_ASSIGNMENTS: (caseId: number | string) => `/admin/cases/${caseId}/assignments/`,
+    ASSIGNMENTS: '/admin/assignments/',
+    AUDIT_LOGS: '/admin/audit-logs/',
+  },
   SCHEMA: '/schema/',
 };

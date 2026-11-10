@@ -1,6 +1,8 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, StyleProp, ViewStyle } from 'react-native';
 import { Colors } from '../../constants/colors';
+import { Spacing } from '../../constants/theme';
+import { AppIcon, AppIconName } from './AppIcon';
 import { Button } from './Button';
 
 export interface EmptyStateProps {
@@ -11,6 +13,9 @@ export interface EmptyStateProps {
   actionLabel?: string;
   onAction?: () => void;
   testID?: string;
+  icon?: React.ReactNode;
+  iconName?: AppIconName;
+  style?: StyleProp<ViewStyle>;
 }
 
 export const EmptyState: React.FC<EmptyStateProps> = ({
@@ -21,11 +26,18 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
   actionLabel,
   onAction,
   testID,
+  icon,
+  iconName,
+  style,
 }) => {
   const displayText = description || message;
+  const resolvedIcon =
+    icon ??
+    (iconName ? <AppIcon name={iconName} size={30} color={Colors.text.muted} /> : null);
 
   return (
-    <View style={styles.container} testID={testID}>
+    <View style={[styles.container, style]} testID={testID}>
+      {resolvedIcon ? <View style={styles.iconContainer}>{resolvedIcon}</View> : null}
       <Text style={styles.title}>{title}</Text>
       {displayText ? <Text style={styles.message}>{displayText}</Text> : null}
       {action ? (
@@ -46,29 +58,37 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
 
 const styles = StyleSheet.create({
   container: {
-    paddingVertical: 40,
-    paddingHorizontal: 20,
+    paddingVertical: Spacing.xxl,
+    paddingHorizontal: Spacing.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconContainer: {
+    marginBottom: Spacing.md,
     alignItems: 'center',
     justifyContent: 'center',
   },
   title: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: '700',
     color: Colors.text.primary,
-    marginBottom: 6,
+    marginBottom: Spacing.xs,
     textAlign: 'center',
+    lineHeight: 24,
   },
   message: {
-    fontSize: 13,
+    fontSize: 14,
     color: Colors.text.secondary,
     textAlign: 'center',
-    lineHeight: 18,
-    marginBottom: 16,
+    lineHeight: 20,
+    marginBottom: Spacing.lg,
+    maxWidth: 320,
   },
   action: {
-    marginTop: 8,
+    marginTop: Spacing.xs,
   },
   actionButton: {
-    paddingHorizontal: 20,
+    paddingHorizontal: Spacing.xl,
+    minHeight: 44,
   },
 });
