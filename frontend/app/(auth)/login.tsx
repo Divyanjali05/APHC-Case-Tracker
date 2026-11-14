@@ -7,8 +7,9 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  TouchableOpacity,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, Href } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -18,11 +19,12 @@ import { Colors } from '../../constants/colors';
 import { loginSchema, LoginFormData } from '../../features/auth/schemas';
 import { apiClient } from '../../services/api/client';
 import { ENDPOINTS } from '../../services/api/endpoints';
-import { tokenStorage } from '../../services/auth/tokenStorage';
+import { useAuth } from '../../features/auth/AuthContext';
 
 export default function LoginScreen() {
   const router = useRouter();
   const { t } = useTranslation();
+  const { signIn } = useAuth();
   const [authError, setAuthError] = useState<string | null>(null);
 
   const {
@@ -46,7 +48,7 @@ export default function LoginScreen() {
       });
 
       if (response.data?.access && response.data?.refresh) {
-        await tokenStorage.saveTokens(response.data.access, response.data.refresh);
+        await signIn(response.data.access, response.data.refresh);
         router.replace('/(tabs)');
       }
     } catch {
@@ -121,6 +123,16 @@ export default function LoginScreen() {
               <Text style={styles.fieldError}>{errors.password.message}</Text>
             ) : null}
 
+            <TouchableOpacity
+              onPress={() => router.push('/(auth)/forgot-password' as Href<string>)}
+              style={styles.forgotPasswordContainer}
+              testID="forgot-password-link"
+            >
+              <Text style={styles.forgotPasswordText}>
+                {t('auth.forgotPassword', 'Forgot Password?')}
+              </Text>
+            </TouchableOpacity>
+
             <Button
               title={isSubmitting ? t('auth.submitting') : t('auth.login')}
               onPress={handleSubmit(onSubmit)}
@@ -174,13 +186,15 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   errorBanner: {
-    backgroundColor: '#7F1D1D',
+    backgroundColor: Colors.dangerSoft,
+    borderWidth: 1,
+    borderColor: Colors.dangerBorder,
     padding: 12,
     borderRadius: 10,
     marginBottom: 16,
   },
   errorBannerText: {
-    color: '#FEE2E2',
+    color: Colors.dangerText,
     fontSize: 13,
     fontWeight: '600',
   },
@@ -215,6 +229,16 @@ const styles = StyleSheet.create({
     color: Colors.danger,
     fontSize: 12,
     marginTop: 4,
+  },
+  forgotPasswordContainer: {
+    alignSelf: 'flex-end',
+    marginTop: 10,
+    paddingVertical: 4,
+  },
+  forgotPasswordText: {
+    color: Colors.primary,
+    fontSize: 13,
+    fontWeight: '600',
   },
   submitButton: {
     marginTop: 20,

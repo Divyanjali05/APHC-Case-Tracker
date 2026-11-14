@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   Switch,
   Alert,
+  Platform,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { useRouter } from 'expo-router';
@@ -15,12 +16,13 @@ import { Card } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
 import { Badge } from '../../components/common/Badge';
 import { Colors } from '../../constants/colors';
-import { tokenStorage } from '../../services/auth/tokenStorage';
+import { useAuth } from '../../features/auth/AuthContext';
 import { speechService } from '../../services/speech/ttsService';
 
 export default function SettingsScreen() {
   const { t, i18n } = useTranslation();
   const router = useRouter();
+  const { signOut } = useAuth();
 
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
 
@@ -35,22 +37,31 @@ export default function SettingsScreen() {
     speechService.speak(text, i18n.language);
   };
 
+  const performLogout = async () => {
+    await signOut();
+    router.replace('/');
+  };
+
   const handleLogout = async () => {
-    Alert.alert(
-      t('settings.logout'),
-      'Are you sure you want to sign out from APHC Case Tracker?',
-      [
-        { text: t('common.cancel'), style: 'cancel' },
-        {
-          text: t('settings.logout'),
-          style: 'destructive',
-          onPress: async () => {
-            await tokenStorage.clearTokens();
-            router.replace('/(auth)/login');
-          },
+    const message = 'Are you sure you want to sign out from APHC Case Tracker?';
+    if (Platform.OS === 'web') {
+      const confirmed = typeof window !== 'undefined' ? window.confirm(message) : true;
+      if (confirmed) {
+        await performLogout();
+      }
+      return;
+    }
+
+    Alert.alert(t('settings.logout'), message, [
+      { text: t('common.cancel'), style: 'cancel' },
+      {
+        text: t('settings.logout'),
+        style: 'destructive',
+        onPress: () => {
+          void performLogout();
         },
-      ]
-    );
+      },
+    ]);
   };
 
   return (
@@ -127,8 +138,8 @@ export default function SettingsScreen() {
             <Switch
               value={notificationsEnabled}
               onValueChange={setNotificationsEnabled}
-              trackColor={{ false: Colors.border, true: Colors.primaryLight }}
-              thumbColor={notificationsEnabled ? Colors.gold : Colors.text.muted}
+              trackColor={{ false: '#CBD5E1', true: '#93C5FD' }}
+              thumbColor={notificationsEnabled ? Colors.primary : '#F8FAFC'}
             />
           </View>
         </Card>
@@ -218,8 +229,8 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
   },
   langOptionSelected: {
-    borderColor: Colors.primaryLight,
-    backgroundColor: '#1E3A8A33',
+    borderColor: Colors.primary,
+    backgroundColor: Colors.primarySoft,
   },
   langOptionText: {
     color: Colors.text.secondary,
@@ -227,11 +238,11 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   langOptionTextSelected: {
-    color: Colors.primaryLight,
+    color: Colors.primary,
     fontWeight: '700',
   },
   checkIcon: {
-    color: Colors.gold,
+    color: Colors.primary,
     fontSize: 16,
     fontWeight: '900',
   },

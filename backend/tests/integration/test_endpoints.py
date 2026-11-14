@@ -1,5 +1,9 @@
 import pytest
+from django.contrib.auth import get_user_model
 from django.urls import reverse
+from rest_framework import status
+
+User = get_user_model()
 
 
 @pytest.mark.parametrize(
@@ -22,8 +26,26 @@ def test_app_status_probes(client, url_name, expected_app):
     assert data["status"] == "ready"
 
 
-def test_swagger_schema_endpoint(client):
-    """Verify that the OpenAPI schema endpoint responds successfully."""
-    url = reverse("schema")
-    response = client.get(url)
-    assert response.status_code == 200
+@pytest.mark.django_db
+def test_swagger_schema_endpoint_restricted_to_staff_admin(api_client):
+    """Schema and docs must reject anonymous/non-staff users and allow admin users."""
+    schema_url = reverse("schema")
+    docs_url = reverse("swagger-ui")
+
+    # Anonymous rejected
+    assert api_client.get(schema_url).status_code == status.HTTP_401_UNAUTHORIZED
+    assert api_client.get(docs_url).status_code == status.HTTP_401_UNAUTHORIZED
+
+    # Non-staff advocate rejected
+    advocate = User.objects.create_user(username="AP/3001/2024", password="Strong#Password1")
+    api_client.force_authenticate(user=advocate)
+    assert api_client.get(schema_url).status_code == status.HTTP_403_FORBIDDEN
+    assert api_client.get(docs_url).status_code == status.HTTP_403_FORBIDDEN
+
+    # Staff admin permitted in non-production docs-enabled env
+    admin = User.objects.create_user(
+        username="staffadmin", password="Strong#Password1", is_staff=True
+    )
+    api_client.force_authenticate(user=admin)
+    assert api_client.get(schema_url).status_code == status.HTTP_200_OK
+    assert api_client.get(docs_url).status_code == status.HTTP_200_OK

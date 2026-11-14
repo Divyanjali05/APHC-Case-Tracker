@@ -40,5 +40,5 @@ minversion = "8.0"
 addopts = "-ra -q"
 testpaths = ["tests"]
 python_files = ["test_*.py", "*_test.py"]
-DJANGO_SETTINGS_MODULE = "config.settings.development"
+DJANGO_SETTINGS_MODULE = "config.settings.test"
 django_find_project = true

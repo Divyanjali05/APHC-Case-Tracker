@@ -44,7 +44,7 @@ export const Button: React.FC<ButtonProps> = ({
       {loading ? (
         <ActivityIndicator
           size="small"
-          color={variant === 'outline' ? Colors.primaryLight : Colors.text.white}
+          color={variant === 'outline' ? Colors.primary : Colors.text.white}
         />
       ) : (
         <Text
@@ -75,11 +75,13 @@ const styles = StyleSheet.create({
   },
   secondary: {
     backgroundColor: Colors.surfaceSubtle,
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
   outline: {
-    backgroundColor: 'transparent',
+    backgroundColor: Colors.surface,
     borderWidth: 1.5,
-    borderColor: Colors.primaryLight,
+    borderColor: Colors.primary,
   },
   danger: {
     backgroundColor: Colors.danger,
@@ -99,7 +101,7 @@ const styles = StyleSheet.create({
     color: Colors.text.primary,
   },
   outlineText: {
-    color: Colors.primaryLight,
+    color: Colors.primary,
   },
   dangerText: {
     color: Colors.text.white,

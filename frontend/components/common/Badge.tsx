@@ -3,12 +3,13 @@ import { View, Text, StyleSheet } from 'react-native';
 
 export interface BadgeProps {
   label: string;
-  variant?: 'primary' | 'success' | 'warning' | 'gold' | 'danger';
+  variant?: 'primary' | 'success' | 'warning' | 'gold' | 'danger' | 'info' | 'secondary';
+  testID?: string;
 }
 
-export const Badge: React.FC<BadgeProps> = ({ label, variant = 'primary' }) => {
+export const Badge: React.FC<BadgeProps> = ({ label, variant = 'primary', testID }) => {
   return (
-    <View style={[styles.badge, styles[variant]]}>
+    <View style={[styles.badge, styles[variant]]} testID={testID}>
       <Text style={[styles.text, styles[`${variant}Text` as keyof typeof styles]]}>
         {label}
       </Text>
@@ -24,19 +25,25 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   primary: {
-    backgroundColor: '#1E3A8A',
+    backgroundColor: '#DBEAFE',
   },
   success: {
-    backgroundColor: '#064E3B',
+    backgroundColor: '#DCFCE7',
   },
   warning: {
-    backgroundColor: '#7C2D12',
+    backgroundColor: '#FFEDD5',
   },
   gold: {
-    backgroundColor: '#78350F',
+    backgroundColor: '#FEF3C7',
   },
   danger: {
-    backgroundColor: '#7F1D1D',
+    backgroundColor: '#FEE2E2',
+  },
+  info: {
+    backgroundColor: '#E0F2FE',
+  },
+  secondary: {
+    backgroundColor: '#F1F5F9',
   },
   text: {
     fontSize: 11,
@@ -44,18 +51,24 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   primaryText: {
-    color: '#93C5FD',
+    color: '#1D4ED8',
   },
   successText: {
-    color: '#6EE7B7',
+    color: '#15803D',
   },
   warningText: {
-    color: '#FDBA74',
+    color: '#C2410C',
   },
   goldText: {
-    color: '#FDE68A',
+    color: '#B45309',
   },
   dangerText: {
-    color: '#FCA5A5',
+    color: '#B91C1C',
+  },
+  infoText: {
+    color: '#0369A1',
+  },
+  secondaryText: {
+    color: '#475569',
   },
 });

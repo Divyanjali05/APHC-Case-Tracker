@@ -49,7 +49,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
   },
   linkText: {
-    color: Colors.primaryLight,
+    color: Colors.primary,
     fontSize: 15,
     fontWeight: '700',
   },

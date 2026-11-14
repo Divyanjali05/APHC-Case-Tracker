@@ -3,6 +3,8 @@ from django.db import models
 
 from common.validators import validate_case_year
 
+from .storage import case_document_upload_path, secure_document_storage
+
 
 class Case(models.Model):
     """Core Case model for tracking matters at the Andhra Pradesh High Court."""
@@ -49,16 +51,200 @@ class Case(models.Model):
 class Hearing(models.Model):
     """Hearing proceedings and history for a case."""
 
+    STATUS_CHOICES = (
+        ("SCHEDULED", "Scheduled"),
+        ("RESCHEDULED", "Rescheduled"),
+        ("COMPLETED", "Completed"),
+        ("CANCELLED", "Cancelled"),
+    )
+
     case = models.ForeignKey(Case, on_delete=models.CASCADE, related_name="hearings")
-    hearing_date = models.DateField()
+    hearing_date = models.DateField(db_index=True)
+    hearing_time = models.TimeField(
+        null=True,
+        blank=True,
+        help_text="Hearing appearance time (defaults to 10:30 AM court session if not set)",
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default="SCHEDULED",
+        db_index=True,
+    )
     court_hall_number = models.PositiveIntegerField(null=True, blank=True)
     item_number = models.PositiveIntegerField(null=True, blank=True)
     business_conducted = models.TextField(blank=True)
     next_date = models.DateField(null=True, blank=True)
+    previous_hearing_date = models.DateField(null=True, blank=True)
+    previous_hearing_time = models.TimeField(null=True, blank=True)
+    rescheduled_reason = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ["-hearing_date"]
+        indexes = [
+            models.Index(fields=["case", "-hearing_date"]),
+            models.Index(fields=["status", "hearing_date"]),
+        ]
 
     def __str__(self):
-        return f"{self.case} - {self.hearing_date}"
+        time_part = f" at {self.hearing_time}" if self.hearing_time else ""
+        return f"{self.case} - {self.hearing_date}{time_part} ({self.status})"
+
+    @property
+    def is_rescheduled(self) -> bool:
+        return bool(self.previous_hearing_date or self.status == "RESCHEDULED")
+
+
+class Judgment(models.Model):
+    """Court judgment or final disposal order for a case."""
+
+    case = models.ForeignKey(Case, on_delete=models.CASCADE, related_name="judgments")
+    judgment_date = models.DateField(db_index=True)
+    judgment_type = models.CharField(max_length=50, default="FINAL", blank=True)
+    order_number = models.CharField(max_length=100, blank=True)
+    bench = models.CharField(max_length=150, blank=True)
+    summary = models.TextField(blank=True)
+    document_link = models.URLField(max_length=500, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-judgment_date", "-created_at"]
+        indexes = [
+            models.Index(fields=["case", "-judgment_date"]),
+        ]
+
+    def __str__(self):
+        return f"Judgment: {self.case} ({self.judgment_date})"
+
+
+class CaseHistory(models.Model):
+    """Audit trail and historical event timeline for tracked cases."""
+
+    SOURCE_CHOICES = (
+        ("MANUAL", "Manual Entry"),
+        ("SYSTEM", "System Generated"),
+        ("SYNC", "APHC Registry Sync"),
+    )
+
+    EVENT_TYPE_CHOICES = (
+        ("CASE_CREATED", "Case Created"),
+        ("CASE_UPDATED", "Case Details Updated"),
+        ("STAGE_CHANGED", "Stage Changed"),
+        ("HEARING_SCHEDULED", "Hearing Scheduled"),
+        ("HEARING_RESCHEDULED", "Hearing Rescheduled"),
+        ("HEARING_COMPLETED", "Hearing Completed"),
+        ("HEARING_PROCEEDINGS", "Hearing Proceedings Recorded"),
+        ("JUDGMENT_ENTERED", "Judgment Pronounced"),
+        ("JUDGMENT_UPDATED", "Judgment Updated"),
+        ("DOCUMENT_UPDATED", "Document Reference Updated"),
+        ("SYNC_UPDATED", "Court Registry Synced"),
+        ("COURT_STATUS_CHANGED", "Court Status Changed"),
+        ("TOKEN_ALLOCATED", "Court Token Allocated"),
+    )
+
+    case = models.ForeignKey(
+        Case,
+        on_delete=models.CASCADE,
+        related_name="history_entries",
+    )
+    event_type = models.CharField(max_length=50, choices=EVENT_TYPE_CHOICES, db_index=True)
+    field_name = models.CharField(max_length=100, blank=True, default="")
+    old_value = models.TextField(blank=True, default="")
+    new_value = models.TextField(blank=True, default="")
+    description = models.TextField()
+    source = models.CharField(max_length=20, choices=SOURCE_CHOICES, default="MANUAL")
+    changed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="case_history_changes",
+    )
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["case", "-created_at"]),
+            models.Index(fields=["event_type"]),
+        ]
+
+    def __str__(self):
+        return f"{self.case} - {self.event_type} ({self.created_at.strftime('%Y-%m-%d %H:%M')})"
+
+
+class CaseDocument(models.Model):
+    """Case-specific document stored securely outside public static/media directories."""
+
+    CATEGORY_CHOICES = (
+        ("PETITION", "Petition"),
+        ("COUNTER_AFFIDAVIT", "Counter Affidavit"),
+        ("REJOINDER", "Rejoinder"),
+        ("JUDGMENT", "Judgment"),
+        ("COURT_ORDER", "Court Order"),
+        ("WRITTEN_SUBMISSIONS", "Written Submissions"),
+        ("EVIDENCE", "Evidence"),
+        ("SUPPORTING_DOCUMENTS", "Supporting Documents"),
+        ("OTHER", "Other"),
+    )
+
+    case = models.ForeignKey(Case, on_delete=models.CASCADE, related_name="documents")
+    uploaded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="uploaded_case_documents",
+    )
+    title = models.CharField(max_length=255)
+    document_type = models.CharField(
+        max_length=30, choices=CATEGORY_CHOICES, default="OTHER", db_index=True
+    )
+    description = models.TextField(blank=True, default="")
+    original_filename = models.CharField(max_length=255)
+    file_size = models.PositiveIntegerField(help_text="File size in bytes")
+    mime_type = models.CharField(max_length=100)
+    file = models.FileField(
+        upload_to=case_document_upload_path,
+        storage=secure_document_storage,
+    )
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["case", "-created_at"]),
+            models.Index(fields=["uploaded_by", "-created_at"]),
+            models.Index(fields=["case", "document_type"]),
+        ]
+
+    def __str__(self):
+        return f"{self.title} ({self.get_document_type_display()}) - Case {self.case_id}"
+
+
+class CaseNote(models.Model):
+    """Private advocate preparation note linked to an authorized tracked case."""
+
+    case = models.ForeignKey(Case, on_delete=models.CASCADE, related_name="notes")
+    advocate = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="case_notes",
+    )
+    title = models.CharField(max_length=255)
+    content = models.TextField()
+    is_pinned = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True, db_index=True)
+
+    class Meta:
+        ordering = ["-is_pinned", "-updated_at"]
+        indexes = [
+            models.Index(fields=["case", "advocate", "-updated_at"]),
+            models.Index(fields=["advocate", "-updated_at"]),
+        ]
+
+    def __str__(self):
+        return f"Note: {self.title} (Advocate: {self.advocate_id}, Case: {self.case_id})"

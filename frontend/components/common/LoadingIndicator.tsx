@@ -9,7 +9,7 @@ export interface LoadingIndicatorProps {
 export const LoadingIndicator: React.FC<LoadingIndicatorProps> = ({ message }) => {
   return (
     <View style={styles.container}>
-      <ActivityIndicator size="large" color={Colors.primaryLight} />
+      <ActivityIndicator size="large" color={Colors.primary} />
       {message ? <Text style={styles.text}>{message}</Text> : null}
     </View>
   );

@@ -1,11 +1,33 @@
 from django.urls import path
 
-from .views import DeviceRegistrationView, NotificationHistoryListView, NotificationsStatusView
+from .views import (
+    DeviceDeactivationView,
+    DeviceRegistrationView,
+    NotificationHistoryListView,
+    NotificationMarkAllReadView,
+    NotificationMarkReadView,
+    NotificationsStatusView,
+    NotificationUnreadCountView,
+    RealtimeEventsView,
+    RealtimeStatusView,
+    RealtimeStreamView,
+    RealtimeTicketView,
+)
 
 app_name = "notifications"
 
 urlpatterns = [
     path("status/", NotificationsStatusView.as_view(), name="status"),
     path("devices/", DeviceRegistrationView.as_view(), name="device_registration"),
+    path("devices/deactivate/", DeviceDeactivationView.as_view(), name="device_deactivation"),
     path("history/", NotificationHistoryListView.as_view(), name="notification_history"),
+    path("unread-count/", NotificationUnreadCountView.as_view(), name="notification_unread_count"),
+    path("<int:pk>/read/", NotificationMarkReadView.as_view(), name="notification_mark_read"),
+    path(
+        "mark-all-read/", NotificationMarkAllReadView.as_view(), name="notification_mark_all_read"
+    ),
+    path("realtime/ticket/", RealtimeTicketView.as_view(), name="realtime_ticket"),
+    path("realtime/events/", RealtimeEventsView.as_view(), name="realtime_events"),
+    path("realtime/stream/", RealtimeStreamView.as_view(), name="realtime_stream"),
+    path("realtime/status/", RealtimeStatusView.as_view(), name="realtime_status"),
 ]
