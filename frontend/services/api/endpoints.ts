@@ -4,6 +4,8 @@ export const ENDPOINTS = {
     TOKEN: '/auth/token/',
     REFRESH: '/auth/token/refresh/',
     LOGOUT: '/auth/logout/',
+    REGISTER: '/auth/register/',
+    REGISTER_VERIFY_OTP: '/auth/register/verify-otp/',
     PASSWORD_RESET_REQUEST: '/auth/password-reset/request/',
     PASSWORD_RESET_CONFIRM: '/auth/password-reset/confirm/',
     PROFILE: '/auth/profile/',

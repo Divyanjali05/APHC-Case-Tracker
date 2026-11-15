@@ -27,6 +27,7 @@ import { OfflineBanner } from '../../components/offline/OfflineBanner';
 import { Colors } from '../../constants/colors';
 import { Radius, Shadows, Spacing } from '../../constants/theme';
 import { useCases } from '../../features/cases/hooks';
+import { useAuth } from '../../features/auth/AuthContext';
 import { normalizeVoiceQuery } from '../../services/speech/voiceQueryNormalizer';
 import { CaseItem } from '../../types';
 import { API_BASE_URL } from '../../services/api/client';
@@ -51,7 +52,14 @@ export default function CasesScreen() {
   const { width } = useWindowDimensions();
   const isDesktop = width >= 1024;
   const { showToast } = useToast();
-  const { data: cases, isLoading, isError, refetch, isRefetching } = useCases();
+  const { isAuthenticated, isDemo } = useAuth();
+  const {
+    data: cases,
+    isLoading,
+    isError,
+    refetch,
+    isRefetching,
+  } = useCases({ enabled: Boolean(isAuthenticated || isDemo) });
 
   const initialFilter =
     params.filter && VALID_FILTERS.includes(params.filter as FilterType)

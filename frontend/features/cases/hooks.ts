@@ -130,7 +130,7 @@ export const DEMO_CASES_DATA: CaseItem[] = [
   },
 ];
 
-export const useCases = () => {
+export const useCases = (options?: { enabled?: boolean }) => {
   return useQuery({
     queryKey: ['cases'],
     queryFn: async (): Promise<CaseItem[]> => {
@@ -164,10 +164,11 @@ export const useCases = () => {
         throw err;
       }
     },
+    enabled: options?.enabled,
   });
 };
 
-export const useDashboard = () => {
+export const useDashboard = (options?: { enabled?: boolean }) => {
   return useQuery({
     queryKey: ['dashboard'],
     queryFn: async (): Promise<
@@ -209,6 +210,7 @@ export const useDashboard = () => {
         throw err;
       }
     },
+    enabled: options?.enabled,
   });
 };
 

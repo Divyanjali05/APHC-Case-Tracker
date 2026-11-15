@@ -24,16 +24,14 @@ export default function WelcomeScreen() {
   const { width } = useWindowDimensions();
   const isWide = width >= 768;
 
-  const { isAuthenticated, isDemo, isLoading, role, enterDemoMode } = useAuth();
+  const { isAuthenticated, isLoading, role } = useAuth();
 
   useEffect(() => {
     if (isLoading) return;
     if (isAuthenticated) {
       router.replace(role === 'ADMIN' ? '/admin' : '/(tabs)');
-    } else if (isDemo) {
-      router.replace('/(tabs)');
     }
-  }, [isLoading, isAuthenticated, isDemo, role, router]);
+  }, [isLoading, isAuthenticated, role, router]);
 
   return (
     <ScreenContainer testID="welcome-screen">
@@ -80,11 +78,19 @@ export default function WelcomeScreen() {
 
               <View style={styles.ctaGroup}>
                 <Button
-                  title={t('welcome.signInCta', 'Sign In to Your Account')}
+                  title={t('welcome.signInCta', 'Sign In')}
                   variant="primary"
                   onPress={() => router.push('/(auth)/login')}
                   style={styles.primaryCta}
                   testID="welcome-signin-button"
+                />
+
+                <Button
+                  title={t('welcome.signUpCta', 'Sign Up')}
+                  variant="outline"
+                  onPress={() => router.push('/(auth)/register' as never)}
+                  style={styles.secondaryCta}
+                  testID="welcome-signup-button"
                 />
 
                 <TouchableOpacity
@@ -174,26 +180,6 @@ export default function WelcomeScreen() {
               </View>
             </Card>
           </View>
-
-          {/* Optional Demo Mode button when enabled via env/dev */}
-          {(__DEV__ || process.env.EXPO_PUBLIC_ENABLE_DEMO === 'true') && (
-            <View style={styles.demoRow}>
-              <TouchableOpacity
-                onPress={async () => {
-                  await enterDemoMode();
-                  router.replace('/(tabs)');
-                }}
-                style={styles.demoButton}
-                testID="welcome-demo-button"
-                accessibilityRole="button"
-              >
-                <AppIcon name="play" size={14} color={Colors.text.secondary} />
-                <Text style={styles.demoText}>
-                  {t('welcome.previewDemo', 'Preview Local Sample Mode')}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          )}
 
           {/* Minimal Footer */}
           <View style={styles.footer} testID="welcome-footer">
@@ -299,6 +285,10 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 340,
   },
+  secondaryCta: {
+    width: '100%',
+    maxWidth: 340,
+  },
   recoveryLink: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -390,26 +380,6 @@ const styles = StyleSheet.create({
   pillarDesc: {
     fontSize: 12,
     lineHeight: 18,
-    color: Colors.text.secondary,
-  },
-  demoRow: {
-    marginTop: Spacing.lg,
-    alignItems: 'center',
-  },
-  demoButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.xs,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    borderRadius: Radius.pill,
-    backgroundColor: Colors.surfaceSubtle,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  demoText: {
-    fontSize: 12,
-    fontWeight: '600',
     color: Colors.text.secondary,
   },
   footer: {

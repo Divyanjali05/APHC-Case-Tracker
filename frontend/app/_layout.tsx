@@ -20,7 +20,11 @@ function RootLayoutNav() {
 
   useEffect(() => {
     const unsubscribe = authService.onSessionExpired(() => {
-      queryClient.clear();
+      queryClient.cancelQueries();
+      setTimeout(() => {
+        queryClient.cancelQueries();
+        queryClient.clear();
+      }, 0);
     });
     return () => {
       unsubscribe();
@@ -88,6 +92,13 @@ function RootLayoutNav() {
         name="(auth)/login"
         options={{
           title: 'Sign In',
+          headerShown: true,
+        }}
+      />
+      <Stack.Screen
+        name="(auth)/register"
+        options={{
+          title: 'Advocate Registration',
           headerShown: true,
         }}
       />

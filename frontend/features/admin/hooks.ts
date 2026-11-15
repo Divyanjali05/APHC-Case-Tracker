@@ -27,7 +27,7 @@ const unwrapResults = <T>(raw: T[] | PaginatedResponse<T> | undefined): T[] => {
   return [];
 };
 
-export const useAdminDashboard = () => {
+export const useAdminDashboard = (options?: { enabled?: boolean }) => {
   return useQuery({
     queryKey: ['admin-dashboard'],
     queryFn: async (): Promise<AdminDashboardResponse> => {
@@ -36,6 +36,7 @@ export const useAdminDashboard = () => {
       );
       return response.data;
     },
+    enabled: options?.enabled,
   });
 };
 
@@ -45,7 +46,10 @@ export interface AdminUserFilters {
   status?: 'ALL' | 'active' | 'inactive' | 'pending';
 }
 
-export const useAdminUsers = (filters?: AdminUserFilters) => {
+export const useAdminUsers = (
+  filters?: AdminUserFilters,
+  options?: { enabled?: boolean }
+) => {
   return useQuery({
     queryKey: ['admin-users', filters],
     queryFn: async (): Promise<AdminUserItem[]> => {
@@ -59,6 +63,7 @@ export const useAdminUsers = (filters?: AdminUserFilters) => {
       >(ENDPOINTS.ADMIN.USERS, { params });
       return unwrapResults(response.data);
     },
+    enabled: options?.enabled,
   });
 };
 

@@ -27,7 +27,7 @@ import { tokenStorage } from '../../services/auth/tokenStorage';
 export default function LoginScreen() {
   const router = useRouter();
   const { t } = useTranslation();
-  const { signIn, enterDemoMode } = useAuth();
+  const { signIn } = useAuth();
   const [authError, setAuthError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
@@ -252,19 +252,22 @@ export default function LoginScreen() {
                 testID="login-submit-button"
               />
 
-              {/* Development / Demo Mode Bypass */}
-              {(__DEV__ || process.env.EXPO_PUBLIC_ENABLE_DEMO === 'true') && (
-                <Button
-                  title={t('auth.demoMode', 'Preview Local Sample Mode')}
-                  variant="outline"
-                  onPress={async () => {
-                    await enterDemoMode();
-                    router.replace('/(tabs)');
-                  }}
-                  style={styles.demoButton}
-                  testID="demo-skip-button"
-                />
-              )}
+              {/* Sign Up Link */}
+              <View style={styles.signUpPromptRow}>
+                <Text style={styles.signUpPromptText}>
+                  {t('auth.noAccountPrompt', "Don't have an advocate account?")}
+                </Text>
+                <TouchableOpacity
+                  onPress={() => router.push('/(auth)/register' as never)}
+                  style={styles.signUpLink}
+                  accessibilityRole="link"
+                  testID="login-register-link"
+                >
+                  <Text style={styles.signUpLinkText}>
+                    {t('auth.signUpLink', 'Sign Up')}
+                  </Text>
+                </TouchableOpacity>
+              </View>
             </Card>
 
             {/* Footer Notice */}
@@ -436,10 +439,27 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   submitButton: {
-    marginBottom: Spacing.sm,
+    marginBottom: Spacing.md,
   },
-  demoButton: {
+  signUpPromptRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: Spacing.xs,
     marginTop: Spacing.sm,
+    paddingVertical: Spacing.xs,
+  },
+  signUpPromptText: {
+    fontSize: 13,
+    color: Colors.text.secondary,
+  },
+  signUpLink: {
+    paddingVertical: 2,
+  },
+  signUpLinkText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.primary,
   },
   footerContainer: {
     flexDirection: 'row',

@@ -41,7 +41,7 @@ export default function AdminDashboardScreen() {
   const isDesktop = width >= 960;
   const isTablet = width >= 640 && width < 960;
 
-  const { user, isSuperuser, signOut } = useAuth();
+  const { user, isSuperuser, isAuthenticated, isAdmin, signOut } = useAuth();
   const { showToast } = useToast();
 
   const {
@@ -50,7 +50,7 @@ export default function AdminDashboardScreen() {
     isError,
     refetch,
     isRefetching,
-  } = useAdminDashboard();
+  } = useAdminDashboard({ enabled: Boolean(isAuthenticated && isAdmin) });
 
   const [isLogoutDialogVisible, setIsLogoutDialogVisible] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);

@@ -41,7 +41,7 @@ export default function DashboardScreen() {
   const isDesktop = width >= 960;
   const isTablet = width >= 640 && width < 960;
 
-  const { user } = useAuth();
+  const { user, isAuthenticated, isDemo } = useAuth();
 
   const [isVoiceModalVisible, setIsVoiceModalVisible] = useState(false);
   const [isNotificationCenterVisible, setIsNotificationCenterVisible] = useState(false);
@@ -54,6 +54,7 @@ export default function DashboardScreen() {
     queryKey: ['health-check'],
     queryFn: fetchHealthCheck,
     retry: 1,
+    enabled: Boolean(isAuthenticated || isDemo),
   });
 
   const {
@@ -62,7 +63,7 @@ export default function DashboardScreen() {
     isError: isDashboardError,
     refetch: refetchDashboard,
     isRefetching: isDashboardRefetching,
-  } = useDashboard();
+  } = useDashboard({ enabled: Boolean(isAuthenticated || isDemo) });
 
   const isRefreshing = isDashboardRefetching;
 

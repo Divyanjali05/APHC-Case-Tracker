@@ -29,6 +29,7 @@ import {
   useTriggerCalendarSync,
   useUpdatePersonalReminder,
 } from '../../features/calendar/hooks';
+import { useAuth } from '../../features/auth/AuthContext';
 import { apiClient } from '../../services/api/client';
 import { ENDPOINTS } from '../../services/api/endpoints';
 import {
@@ -57,6 +58,9 @@ export default function CalendarScreen() {
   const [syncModalVisible, setSyncModalVisible] = useState(false);
 
   // Queries & Mutations
+  const { isAuthenticated, isDemo } = useAuth();
+  const isAuthOrDemo = Boolean(isAuthenticated || isDemo);
+
   const {
     data: agenda,
     isLoading,
@@ -65,9 +69,10 @@ export default function CalendarScreen() {
   } = useDailyAgenda({
     date: selectedDate,
     view: currentView,
+    enabled: isAuthOrDemo,
   });
 
-  const { data: syncSetting } = useCalendarSyncStatus();
+  const { data: syncSetting } = useCalendarSyncStatus({ enabled: isAuthOrDemo });
   const createReminderMutation = useCreatePersonalReminder();
   const updateReminderMutation = useUpdatePersonalReminder();
   const connectSyncMutation = useConnectCalendarSync();

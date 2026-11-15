@@ -230,28 +230,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const bootstrap = async () => {
       try {
-        const demo =
-          typeof tokenStorage.isDemoMode === 'function'
-            ? await tokenStorage.isDemoMode()
-            : false;
-
-        if (demo) {
-          if (mounted) {
-            setIsDemo(true);
-            setHasToken(false);
-            setUser(null);
-            setTokenRole(null);
-            setIsLoading(false);
-          }
-          return;
-        }
-
         const accessToken =
           typeof tokenStorage.getAccessToken === 'function'
             ? await tokenStorage.getAccessToken()
             : null;
 
         if (!accessToken) {
+          if (typeof tokenStorage.setDemoMode === 'function') {
+            await tokenStorage.setDemoMode(false);
+          }
           if (mounted) {
             setIsDemo(false);
             setHasToken(false);
@@ -311,6 +298,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setIsDemo(false);
         setUser(null);
         setTokenRole(null);
+        setTimeout(() => {
+          queryClient.cancelQueries();
+          queryClient.clear();
+        }, 0);
       }
     });
 
@@ -349,12 +340,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const signOut = useCallback(async () => {
-    await authService.logout();
+    queryClient.cancelQueries();
+    try {
+      await authService.logout();
+    } catch {
+      // Ignore network errors on logout
+    }
+    if (typeof tokenStorage.setDemoMode === 'function') {
+      await tokenStorage.setDemoMode(false);
+    }
     setUser(null);
     setTokenRole(null);
     setHasToken(false);
     setIsDemo(false);
-    queryClient.clear();
+    setTimeout(() => {
+      queryClient.cancelQueries();
+      queryClient.clear();
+    }, 0);
   }, []);
 
   const updateProfile = useCallback(

@@ -17,10 +17,18 @@ export interface UseDailyAgendaParams {
   endDate?: string;
   view?: CalendarViewType;
   userKey?: string;
+  enabled?: boolean;
 }
 
 export function useDailyAgenda(params: UseDailyAgendaParams = {}) {
-  const { date, startDate, endDate, view = 'day', userKey = 'advocate' } = params;
+  const {
+    date,
+    startDate,
+    endDate,
+    view = 'day',
+    userKey = 'advocate',
+    enabled,
+  } = params;
   const dateKey = date || startDate || new Date().toISOString().split('T')[0];
 
   return useQuery({
@@ -49,6 +57,7 @@ export function useDailyAgenda(params: UseDailyAgendaParams = {}) {
         throw err;
       }
     },
+    enabled,
   });
 }
 
@@ -112,7 +121,7 @@ export function useDeletePersonalReminder() {
   });
 }
 
-export function useCalendarSyncStatus() {
+export function useCalendarSyncStatus(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ['calendar-sync-status'],
     queryFn: async (): Promise<CalendarSyncSettingItem> => {
@@ -121,6 +130,7 @@ export function useCalendarSyncStatus() {
       );
       return response.data;
     },
+    enabled: options?.enabled,
   });
 }
 
