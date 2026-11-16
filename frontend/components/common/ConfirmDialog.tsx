@@ -40,6 +40,8 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
 }) => {
   const resolvedIcon: AppIconName = iconName || (destructive ? 'alert-triangle' : 'info');
 
+  if (!visible) return null;
+
   return (
     <Modal
       visible={visible}

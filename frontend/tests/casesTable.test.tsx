@@ -13,6 +13,8 @@ jest.mock('expo-router', () => ({
 
 jest.mock('../features/cases/hooks', () => ({
   useCases: jest.fn(),
+  useDeleteCase: () => ({ mutateAsync: jest.fn(), isPending: false }),
+  useUpdateCase: () => ({ mutateAsync: jest.fn(), isPending: false }),
 }));
 
 const mockCases: CaseItem[] = [
@@ -139,16 +141,18 @@ describe('Case Table and Judgment Interface', () => {
     expect(screen.queryByTestId('case-card-3')).toBeNull();
   });
 
-  it('8. filters cases by status using filter chips', () => {
+  it('8. filters cases by status using filter dropdown', () => {
     render(<CasesScreen />);
-    const withJudgmentChip = screen.getByTestId('filter-chip-with_judgment');
+    fireEvent.press(screen.getByTestId('cases-filter-dropdown-btn'));
+    const withJudgmentChip = screen.getByTestId('filter-option-with_judgment');
     fireEvent.press(withJudgmentChip);
 
     expect(screen.getByTestId('case-card-2')).toBeTruthy();
     expect(screen.queryByTestId('case-card-1')).toBeNull();
     expect(screen.queryByTestId('case-card-3')).toBeNull();
 
-    const adjournedChip = screen.getByTestId('filter-chip-adjourned');
+    fireEvent.press(screen.getByTestId('cases-filter-dropdown-btn'));
+    const adjournedChip = screen.getByTestId('filter-option-adjourned');
     fireEvent.press(adjournedChip);
 
     expect(screen.getByTestId('case-card-3')).toBeTruthy();
@@ -156,8 +160,9 @@ describe('Case Table and Judgment Interface', () => {
     expect(screen.queryByTestId('case-card-2')).toBeNull();
   });
 
-  it('9. sorts cases using sorting controls', () => {
+  it('9. sorts cases using sorting dropdown controls', () => {
     render(<CasesScreen />);
+    fireEvent.press(screen.getByTestId('cases-sort-dropdown-btn'));
     const sortCaseName = screen.getByTestId('sort-option-case_name');
     fireEvent.press(sortCaseName);
     // Component re-sorts and stays interactive

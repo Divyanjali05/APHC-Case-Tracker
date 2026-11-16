@@ -155,10 +155,6 @@ export default function LoginScreen() {
                 render={({ field: { onChange, onBlur, value } }) => (
                   <Input
                     label={t('auth.identifierLabel', 'Username or Bar Council ID')}
-                    placeholder={t(
-                      'auth.identifierPlaceholder',
-                      'AP/1234/2020 or username'
-                    )}
                     value={value}
                     onChangeText={onChange}
                     onBlur={onBlur}
@@ -179,7 +175,6 @@ export default function LoginScreen() {
                 render={({ field: { onChange, onBlur, value } }) => (
                   <Input
                     label={t('auth.password', 'Password')}
-                    placeholder={t('auth.passwordPlaceholder', 'Enter your password')}
                     value={value}
                     onChangeText={onChange}
                     onBlur={onBlur}

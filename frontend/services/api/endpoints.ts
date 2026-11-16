@@ -43,6 +43,8 @@ export const ENDPOINTS = {
       `/cases/${caseId}/notes/${id}/`,
     EXPORT_PDF: (caseId: number | string) => `/cases/${caseId}/export/pdf/`,
     EXPORT_CSV: '/cases/export/csv/',
+    IMPORT_EXTRACT: '/cases/import/extract/',
+    IMPORT_CONFIRM: '/cases/import/confirm/',
   },
   COURT_STATUS: {
     SYNC_STATUS: '/court-status/sync-status/',

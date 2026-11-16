@@ -58,6 +58,13 @@ jest.mock('@tanstack/react-query', () => {
 
 jest.mock('../features/cases/hooks', () => ({
   useDashboard: jest.fn(),
+  useCases: jest.fn().mockReturnValue({
+    data: [],
+    isLoading: false,
+    isError: false,
+    refetch: jest.fn(),
+    isRefetching: false,
+  }),
 }));
 
 jest.mock('../services/api/client', () => ({

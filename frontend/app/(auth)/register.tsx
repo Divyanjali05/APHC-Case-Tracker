@@ -228,7 +228,6 @@ export default function RegisterScreen() {
                 render={({ field: { onChange, onBlur, value } }) => (
                   <Input
                     label={t('auth.enrollmentNumber', 'Bar Council Enrollment No.')}
-                    placeholder="AP/1234/2024"
                     value={value}
                     onChangeText={txt => onChange(txt.toUpperCase())}
                     onBlur={onBlur}
@@ -255,7 +254,6 @@ export default function RegisterScreen() {
                     render={({ field: { onChange, onBlur, value } }) => (
                       <Input
                         label={t('auth.firstName', 'First Name')}
-                        placeholder="Venkata"
                         value={value}
                         onChangeText={onChange}
                         onBlur={onBlur}
@@ -275,7 +273,6 @@ export default function RegisterScreen() {
                     render={({ field: { onChange, onBlur, value } }) => (
                       <Input
                         label={t('auth.lastName', 'Last Name')}
-                        placeholder="Rao"
                         value={value}
                         onChangeText={onChange}
                         onBlur={onBlur}
@@ -297,7 +294,6 @@ export default function RegisterScreen() {
                 render={({ field: { onChange, onBlur, value } }) => (
                   <Input
                     label={t('auth.emailAddress', 'Email Address')}
-                    placeholder="advocate@example.com"
                     value={value}
                     onChangeText={onChange}
                     onBlur={onBlur}
@@ -318,7 +314,6 @@ export default function RegisterScreen() {
                 render={({ field: { onChange, onBlur, value } }) => (
                   <Input
                     label={t('auth.phoneNumber', 'Mobile Number (Optional)')}
-                    placeholder="+91 9876543210"
                     value={value}
                     onChangeText={onChange}
                     onBlur={onBlur}
@@ -338,7 +333,6 @@ export default function RegisterScreen() {
                 render={({ field: { onChange, onBlur, value } }) => (
                   <Input
                     label={t('auth.chamberAddress', 'Chamber / Office (Optional)')}
-                    placeholder="Chamber No. 12, High Court Complex"
                     value={value}
                     onChangeText={onChange}
                     onBlur={onBlur}
@@ -367,7 +361,6 @@ export default function RegisterScreen() {
                 render={({ field: { onChange, onBlur, value } }) => (
                   <Input
                     label={t('auth.password', 'Password')}
-                    placeholder="••••••••"
                     value={value}
                     onChangeText={onChange}
                     onBlur={onBlur}
@@ -404,7 +397,6 @@ export default function RegisterScreen() {
                 render={({ field: { onChange, onBlur, value } }) => (
                   <Input
                     label={t('auth.confirmPassword', 'Confirm Password')}
-                    placeholder="••••••••"
                     value={value}
                     onChangeText={onChange}
                     onBlur={onBlur}

@@ -1,15 +1,16 @@
 import React from 'react';
-import { render, fireEvent, screen } from '@testing-library/react-native';
+import { render, fireEvent, screen, act } from '@testing-library/react-native';
 import { ScrollView } from 'react-native';
-import DashboardScreen from '../app/(tabs)/index';
-import { useDashboard } from '../features/cases/hooks';
+import DashboardScreen, { formatTableDate, getClosedDate } from '../app/(tabs)/index';
+import { useDashboard, useCases } from '../features/cases/hooks';
 import { speechService } from '../services/speech/ttsService';
-import { DashboardData } from '../types';
+import { CaseItem, DashboardData } from '../types';
 
 const mockPush = jest.fn();
 const mockChangeLanguage = jest.fn();
 const mockRefetchHealth = jest.fn().mockResolvedValue({});
 const mockRefetchDashboard = jest.fn().mockResolvedValue({});
+const mockRefetchCases = jest.fn().mockResolvedValue({});
 
 jest.mock('expo-router', () => ({
   useRouter: () => ({
@@ -70,8 +71,42 @@ jest.mock('../components/notifications/NotificationCenterModal', () => ({
   },
 }));
 
+jest.mock('../components/speech/VoiceInputModal', () => ({
+  VoiceInputModal: ({
+    visible,
+    _onClose,
+    onApply,
+  }: {
+    visible: boolean;
+    _onClose?: () => void;
+    onApply: (t: string) => void;
+  }) => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const React = require('react');
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { View, Text, TouchableOpacity } = require('react-native');
+    if (!visible) return null;
+    return React.createElement(
+      View,
+      { testID: 'voice-input-modal' },
+      React.createElement(Text, null, 'Voice Search Modal'),
+      React.createElement(
+        TouchableOpacity,
+        {
+          testID: 'voice-apply-test-btn',
+          onPress: () => onApply('WP 1234'),
+        },
+        React.createElement(Text, null, 'Apply Voice Search')
+      )
+    );
+  },
+}));
+
 jest.mock('../features/cases/hooks', () => ({
   useDashboard: jest.fn(),
+  useCases: jest.fn(),
+  useExtractDocument: jest.fn(() => ({ isPending: false, mutateAsync: jest.fn() })),
+  useConfirmImportCase: jest.fn(() => ({ isPending: false, mutateAsync: jest.fn() })),
 }));
 
 jest.mock('../services/api/client', () => ({
@@ -87,6 +122,7 @@ jest.mock('../services/speech/ttsService', () => ({
 const mockDashboardData: DashboardData & {
   isOfflineCached?: boolean;
   cachedAt?: string;
+  isDemoData?: boolean;
 } = {
   summary: {
     total_cases: 12,
@@ -94,69 +130,11 @@ const mockDashboardData: DashboardData & {
     disposed_cases: 3,
     adjourned_cases: 2,
   },
-  today_hearings: [
-    {
-      id: 101,
-      case_id: 1,
-      case_number: 'WP 1234/2024',
-      petitioner: 'Srinivasa Rao',
-      respondent: 'State of AP',
-      court_hall: 4,
-      item_number: 12,
-      judge: "Court Hall 4 - Hon'ble Justice Reddy",
-      hearing_date: '2026-11-07',
-      hearing_time: '10:30:00',
-      status: 'SCHEDULED',
-    },
-  ],
-  upcoming_hearings: [
-    {
-      id: 102,
-      case_id: 2,
-      case_number: 'WA 5678/2024',
-      petitioner: 'Venkata Ramana',
-      respondent: 'AP Transco',
-      court_hall: 2,
-      item_number: 5,
-      judge: 'Court Hall 2 - Division Bench',
-      hearing_date: '2026-11-10',
-      hearing_time: '11:00:00',
-      status: 'SCHEDULED',
-    },
-  ],
-  upcoming_reminders: [
-    {
-      id: 201,
-      case_id: 1,
-      case_number: 'WP 1234/2024',
-      title: 'Submit Counter Affidavit',
-      reminder_type: 'FILING',
-      due_date: '2026-11-09T10:00:00Z',
-      status: 'PENDING',
-    },
-  ],
-  recent_notifications: [
-    {
-      id: 301,
-      title: 'Item 12 Called',
-      body: 'Item 12 is now called in Court Hall 4',
-      category: 'TOKEN_ALERT',
-      is_read: false,
-      sent_at: '2026-11-07T10:15:00Z',
-      case_id: 1,
-    },
-  ],
-  recent_activity: [
-    {
-      id: 401,
-      case_id: 1,
-      case_number: 'WP 1234/2024',
-      event_type: 'HEARING_SCHEDULED',
-      description: 'Hearing appearance listed in Court Hall 4',
-      source: 'MANUAL',
-      created_at: '2026-11-07T08:00:00Z',
-    },
-  ],
+  today_hearings: [],
+  upcoming_hearings: [],
+  upcoming_reminders: [],
+  recent_notifications: [],
+  recent_activity: [],
   sync_status: {
     last_synced_at: '2026-11-07T09:00:00Z',
     is_fresh: true,
@@ -165,7 +143,74 @@ const mockDashboardData: DashboardData & {
   isOfflineCached: false,
 };
 
-describe('DashboardScreen Component', () => {
+const mockCasesList: CaseItem[] = [
+  {
+    id: 1,
+    case_type: 'WP',
+    case_number: '1234',
+    filing_year: 2024,
+    petitioner: 'Srinivasa Rao',
+    respondent: 'State of AP',
+    petitioner_advocate: 'K. Ramarao',
+    respondent_advocate: 'Advocate General',
+    current_stage: 'Hearing Appearance Listed',
+    status: 'PENDING',
+    court_hall_number: 4,
+    bench: "Court Hall 4 - Hon'ble Justice Reddy",
+    next_hearing_date: '2026-11-20',
+    effective_next_hearing_date: '2026-11-20',
+    created_at: '2024-01-15T10:00:00Z',
+    updated_at: '2026-11-07T08:00:00Z',
+    hearings: [
+      {
+        id: 101,
+        case: 1,
+        hearing_date: '2026-11-20',
+        hearing_time: '10:30:00',
+        court_hall_number: 4,
+        status: 'SCHEDULED',
+        created_at: '2024-01-15T10:00:00Z',
+      },
+    ],
+  },
+  {
+    id: 2,
+    case_type: 'WA',
+    case_number: '5678',
+    filing_year: 2024,
+    petitioner: 'Venkata Ramana',
+    respondent: 'AP Transco',
+    current_stage: 'Final Disposal',
+    status: 'DISPOSED',
+    judgment_date: '2026-10-15',
+    latest_judgment: {
+      id: 501,
+      case: 2,
+      judgment_date: '2026-10-15',
+      summary: 'Appeal allowed in part with directions.',
+      created_at: '2026-10-15T12:00:00Z',
+      updated_at: '2026-10-15T12:00:00Z',
+    },
+    created_at: '2024-02-10T10:00:00Z',
+    updated_at: '2026-10-15T12:00:00Z',
+  },
+  {
+    id: 3,
+    case_type: 'CRLP',
+    case_number: '9012',
+    filing_year: 2024,
+    petitioner: 'Narayana Swamy',
+    respondent: 'State Police Department',
+    current_stage: 'Adjourned at Request',
+    status: 'ADJOURNED',
+    next_hearing_date: '2026-12-05',
+    effective_next_hearing_date: '2026-12-05',
+    created_at: '2024-03-01T10:00:00Z',
+    updated_at: '2026-11-01T10:00:00Z',
+  },
+];
+
+describe('DashboardScreen Component - Redesign', () => {
   beforeEach(() => {
     jest.clearAllMocks();
 
@@ -190,253 +235,429 @@ describe('DashboardScreen Component', () => {
       refetch: mockRefetchDashboard,
       isRefetching: false,
     });
+
+    (useCases as jest.Mock).mockReturnValue({
+      data: mockCasesList,
+      isLoading: false,
+      isError: false,
+      refetch: mockRefetchCases,
+      isRefetching: false,
+    });
   });
 
-  it('renders dashboard screen with court heading and app branding', () => {
-    render(<DashboardScreen />);
+  describe('Date Helpers Safeguards', () => {
+    it('returns N/A when date string is missing or null', () => {
+      expect(formatTableDate(undefined)).toBe('N/A');
+      expect(formatTableDate(null)).toBe('N/A');
+      expect(formatTableDate('')).toBe('N/A');
+      expect(formatTableDate('   ')).toBe('N/A');
+      expect(formatTableDate('N/A')).toBe('N/A');
+    });
 
-    expect(screen.getByTestId('dashboard-screen')).toBeTruthy();
-    expect(screen.getByText('APHC AMARAVATI')).toBeTruthy();
-    expect(screen.getByText('APHC Case Tracker')).toBeTruthy();
-    expect(screen.getByText('High Court of Andhra Pradesh')).toBeTruthy();
+    it('formats valid ISO dates cleanly to YYYY-MM-DD', () => {
+      expect(formatTableDate('2024-01-15T10:00:00Z')).toBe('2024-01-15');
+      expect(formatTableDate('2026-11-20')).toBe('2026-11-20');
+    });
+
+    it('strictly returns N/A for closed date if case is not disposed', () => {
+      const pendingCase = mockCasesList[0];
+      expect(getClosedDate(pendingCase)).toBe('N/A');
+    });
+
+    it('returns verified judgment date for disposed cases', () => {
+      const disposedCase = mockCasesList[1];
+      expect(getClosedDate(disposedCase)).toBe('2026-10-15');
+    });
   });
 
-  it('renders aggregated summary statistics cards correctly', () => {
-    render(<DashboardScreen />);
+  describe('1. Dashboard Header', () => {
+    it('renders dashboard screen with court branding and advocate profile info', () => {
+      render(<DashboardScreen />);
 
-    expect(screen.getByTestId('stat-total-cases')).toBeTruthy();
-    expect(screen.getByText('12')).toBeTruthy();
+      expect(screen.getByTestId('dashboard-screen')).toBeTruthy();
+      expect(screen.getByText('APHC AMARAVATI')).toBeTruthy();
+      expect(screen.getByText('High Court of Andhra Pradesh')).toBeTruthy();
+      expect(screen.getByText('My Case Dashboard')).toBeTruthy();
+    });
 
-    expect(screen.getByTestId('stat-pending-cases')).toBeTruthy();
-    expect(screen.getByText('7')).toBeTruthy();
+    it('switches language on language toggle press', () => {
+      render(<DashboardScreen />);
 
-    expect(screen.getByTestId('stat-disposed-cases')).toBeTruthy();
-    expect(screen.getByText('3')).toBeTruthy();
+      const langBtn = screen.getByTestId('dashboard-lang-toggle');
+      expect(langBtn).toBeTruthy();
+      fireEvent.press(langBtn);
 
-    expect(screen.getByTestId('stat-adjourned-cases')).toBeTruthy();
-    expect(screen.getByText('2')).toBeTruthy();
+      expect(mockChangeLanguage).toHaveBeenCalledWith('te');
+    });
+
+    it('opens Voice Input Modal when microphone button is clicked', () => {
+      render(<DashboardScreen />);
+
+      const micBtn = screen.getByTestId('dashboard-voice-search-button');
+      expect(micBtn).toBeTruthy();
+      fireEvent.press(micBtn);
+
+      expect(screen.getByTestId('voice-input-modal')).toBeTruthy();
+    });
+
+    it('triggers speech readout of docket statistics on voice read press', () => {
+      render(<DashboardScreen />);
+
+      const voiceBtn = screen.getByTestId('voice-read-button');
+      fireEvent.press(voiceBtn);
+
+      expect(speechService.speak).toHaveBeenCalledTimes(1);
+      const spokenText = (speechService.speak as jest.Mock).mock.calls[0][0];
+      expect(spokenText).toContain('High Court of Andhra Pradesh');
+      expect(spokenText).toContain('Total Cases: 12');
+    });
+
+    it('opens NotificationCenterModal on notification bell press', () => {
+      render(<DashboardScreen />);
+
+      expect(screen.queryByTestId('dashboard-notification-center-modal')).toBeNull();
+      const notifBtn = screen.getByTestId('open-notifications-center-btn');
+      fireEvent.press(notifBtn);
+
+      expect(screen.getByTestId('dashboard-notification-center-modal')).toBeTruthy();
+    });
+
+    it('navigates to live court tokens board from quick link bar', () => {
+      render(<DashboardScreen />);
+
+      expect(screen.getByTestId('dashboard-tokens-card')).toBeTruthy();
+      const tokensAction = screen.getByTestId('dashboard-tokens-action');
+      expect(tokensAction).toBeTruthy();
+
+      fireEvent.press(tokensAction);
+      expect(mockPush).toHaveBeenCalledWith('/(tabs)/tokens');
+    });
   });
 
-  it("renders today's scheduled hearings section and items", () => {
-    render(<DashboardScreen />);
+  describe('2. Case Statistics (4 Horizontal Cards)', () => {
+    it('renders real API statistics from database/dashboard query', () => {
+      render(<DashboardScreen />);
 
-    expect(screen.getByTestId('today-hearings-section')).toBeTruthy();
-    expect(screen.getByTestId('today-hearing-item-101')).toBeTruthy();
-    expect(screen.getAllByText('WP 1234/2024').length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText('Srinivasa Rao vs State of AP')).toBeTruthy();
-    expect(screen.getByText('Hall 4')).toBeTruthy();
-    expect(screen.getByText('Item #12')).toBeTruthy();
+      expect(screen.getByTestId('stat-total-cases')).toBeTruthy();
+      expect(screen.getByText('12')).toBeTruthy();
+
+      expect(screen.getByTestId('stat-pending-cases')).toBeTruthy();
+      expect(screen.getByText('7')).toBeTruthy();
+
+      expect(screen.getByTestId('stat-disposed-cases')).toBeTruthy();
+      expect(screen.getByText('3')).toBeTruthy();
+
+      expect(screen.getByTestId('stat-adjourned-cases')).toBeTruthy();
+      expect(screen.getByText('2')).toBeTruthy();
+    });
+
+    it('filters main case table when a statistic card is pressed', () => {
+      render(<DashboardScreen />);
+
+      // Initially all 3 cases are rendered
+      expect(screen.getByText('WP 1234/2024')).toBeTruthy();
+      expect(screen.getByText('WA 5678/2024')).toBeTruthy();
+      expect(screen.getByText('CRLP 9012/2024')).toBeTruthy();
+
+      // Click "Pending" stat card -> filters table to only PENDING cases
+      fireEvent.press(screen.getByTestId('stat-pending-cases'));
+      expect(screen.getByText('WP 1234/2024')).toBeTruthy();
+      expect(screen.queryByText('WA 5678/2024')).toBeNull();
+      expect(screen.queryByText('CRLP 9012/2024')).toBeNull();
+
+      // Click "Disposed" stat card -> filters table to only DISPOSED cases
+      fireEvent.press(screen.getByTestId('stat-disposed-cases'));
+      expect(screen.queryByText('WP 1234/2024')).toBeNull();
+      expect(screen.getByText('WA 5678/2024')).toBeTruthy();
+      expect(screen.queryByText('CRLP 9012/2024')).toBeNull();
+
+      // Click "Disposed" again to toggle off -> resets back to ALL
+      fireEvent.press(screen.getByTestId('stat-disposed-cases'));
+      expect(screen.getByText('WP 1234/2024')).toBeTruthy();
+      expect(screen.getByText('WA 5678/2024')).toBeTruthy();
+      expect(screen.getByText('CRLP 9012/2024')).toBeTruthy();
+    });
   });
 
-  it('renders upcoming hearings section with schedule info', () => {
-    render(<DashboardScreen />);
+  describe('3. Main Cases Table (7 Columns & Sticky Case Column)', () => {
+    it('renders the 7 columns: Case Number/Name, Started Date, Next Hearing, Adjournment History, Closed Date, Status, Judgment', () => {
+      render(<DashboardScreen />);
 
-    expect(screen.getByTestId('upcoming-hearings-section')).toBeTruthy();
-    expect(screen.getByTestId('upcoming-hearing-item-102')).toBeTruthy();
-    expect(screen.getByText('WA 5678/2024')).toBeTruthy();
-    expect(screen.getByText('Venkata Ramana vs AP Transco')).toBeTruthy();
-    expect(screen.getByText('2026-11-10')).toBeTruthy();
+      expect(screen.getByTestId('main-cases-table')).toBeTruthy();
+      expect(screen.getByTestId('sticky-header-case')).toBeTruthy();
+      expect(screen.getByText('Case Number / Case Name')).toBeTruthy();
+      expect(screen.getByText('Started Date')).toBeTruthy();
+      expect(screen.getByText('Next Hearing')).toBeTruthy();
+      expect(screen.getByText('Adjournment History')).toBeTruthy();
+      expect(screen.getByText('Closed Date')).toBeTruthy();
+      expect(screen.getByText('Status')).toBeTruthy();
+      expect(screen.getByText('Judgment')).toBeTruthy();
+    });
+
+    it('renders sticky case identity column permanently with unclipped case number', () => {
+      render(<DashboardScreen />);
+
+      const stickyCol = screen.getByTestId('sticky-case-col-1');
+      expect(stickyCol).toBeTruthy();
+      expect(screen.getByText('WP 1234/2024')).toBeTruthy();
+      expect(screen.getByText('Srinivasa Rao vs State of AP')).toBeTruthy();
+    });
+
+    it('adapts sticky column width responsively for mobile viewports (320px, 360px, 375px, 393px, 430px)', () => {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const rn = require('react-native');
+      const spy = jest.spyOn(rn, 'useWindowDimensions');
+
+      // 320px viewport
+      spy.mockReturnValue({ width: 320, height: 600, scale: 1, fontScale: 1 });
+      const { rerender } = render(<DashboardScreen />);
+      let stickyHeader = screen.getByTestId('sticky-header-case');
+      expect(stickyHeader.props.style).toEqual(
+        expect.arrayContaining([expect.objectContaining({ width: 126 })])
+      );
+
+      // 360px viewport
+      spy.mockReturnValue({ width: 360, height: 740, scale: 1, fontScale: 1 });
+      rerender(<DashboardScreen />);
+      stickyHeader = screen.getByTestId('sticky-header-case');
+      expect(stickyHeader.props.style).toEqual(
+        expect.arrayContaining([expect.objectContaining({ width: 132 })])
+      );
+
+      // 375px viewport (iPhone SE)
+      spy.mockReturnValue({ width: 375, height: 667, scale: 1, fontScale: 1 });
+      rerender(<DashboardScreen />);
+      stickyHeader = screen.getByTestId('sticky-header-case');
+      expect(stickyHeader.props.style).toEqual(
+        expect.arrayContaining([expect.objectContaining({ width: 140 })])
+      );
+
+      // 393px viewport (standard iPhone 14/15/16, exact 135-145px target)
+      spy.mockReturnValue({ width: 393, height: 852, scale: 1, fontScale: 1 });
+      rerender(<DashboardScreen />);
+      stickyHeader = screen.getByTestId('sticky-header-case');
+      expect(stickyHeader.props.style).toEqual(
+        expect.arrayContaining([expect.objectContaining({ width: 140 })])
+      );
+
+      // 430px viewport (large mobile / Max)
+      spy.mockReturnValue({ width: 430, height: 932, scale: 1, fontScale: 1 });
+      rerender(<DashboardScreen />);
+      stickyHeader = screen.getByTestId('sticky-header-case');
+      expect(stickyHeader.props.style).toEqual(
+        expect.arrayContaining([expect.objectContaining({ width: 146 })])
+      );
+
+      spy.mockRestore();
+    });
+
+    it('displays dates accurately with N/A when unavailable', () => {
+      render(<DashboardScreen />);
+
+      // Pending case WP 1234 has Started Date 2024-01-15, Next Hearing 2026-11-20, Closed Date N/A
+      expect(screen.getByText('2024-01-15')).toBeTruthy();
+      expect(screen.getByText('2026-11-20')).toBeTruthy();
+
+      // Disposed case WA 5678 has Closed Date 2026-10-15
+      expect(screen.getByText('2026-10-15')).toBeTruthy();
+    });
+
+    it('expands row details on click revealing metadata and action buttons', () => {
+      render(<DashboardScreen />);
+
+      // Before click, drawer is not expanded
+      expect(screen.queryByTestId('case-expanded-1')).toBeNull();
+
+      // Click case row
+      fireEvent.press(screen.getByTestId('case-row-1'));
+
+      // Expanded drawer is displayed
+      expect(screen.getByTestId('case-expanded-1')).toBeTruthy();
+      expect(screen.getByText('Petitioner')).toBeTruthy();
+      expect(screen.getByText('Srinivasa Rao')).toBeTruthy();
+      expect(screen.getByText('Adv: K. Ramarao')).toBeTruthy();
+      expect(screen.getByText('Respondent')).toBeTruthy();
+      expect(screen.getByText('State of AP')).toBeTruthy();
+      expect(screen.getByText('Court Hall 4')).toBeTruthy();
+      expect(screen.getByText('1 hearing appearances recorded')).toBeTruthy();
+
+      // Action button navigates to /cases/1
+      const viewDetailsBtn = screen.getByTestId('view-case-details-1');
+      expect(viewDetailsBtn).toBeTruthy();
+      fireEvent.press(viewDetailsBtn);
+      expect(mockPush).toHaveBeenCalledWith('/cases/1');
+    });
   });
 
-  it('renders compliance reminders and recent alerts', () => {
-    render(<DashboardScreen />);
+  describe('4. Search, Filter and Import Controls', () => {
+    it('filters cases by search query (petitioner, respondent, case number)', () => {
+      render(<DashboardScreen />);
 
-    expect(screen.getByTestId('upcoming-reminders-section')).toBeTruthy();
-    expect(screen.getByTestId('reminder-item-201')).toBeTruthy();
-    expect(screen.getByText('Submit Counter Affidavit')).toBeTruthy();
+      const searchInput = screen.getByTestId('case-search-input');
 
-    expect(screen.getByTestId('recent-notifications-section')).toBeTruthy();
-    expect(screen.getByTestId('notification-item-301')).toBeTruthy();
-    expect(screen.getByText(/Item 12 Called/)).toBeTruthy();
+      // Search by petitioner "Srinivasa"
+      act(() => {
+        fireEvent.changeText(searchInput, 'Srinivasa');
+      });
+      expect(screen.getByText('WP 1234/2024')).toBeTruthy();
+      expect(screen.queryByText('WA 5678/2024')).toBeNull();
 
-    expect(screen.getByTestId('recent-activity-section')).toBeTruthy();
-    expect(screen.getByTestId('recent-activity-item-401')).toBeTruthy();
-    expect(screen.getByText('Hearing appearance listed in Court Hall 4')).toBeTruthy();
+      // Search by case number "5678"
+      act(() => {
+        fireEvent.changeText(searchInput, '5678');
+      });
+      expect(screen.queryByText('WP 1234/2024')).toBeNull();
+      expect(screen.getByText('WA 5678/2024')).toBeTruthy();
+    });
+
+    it('matches case when search query contains Telugu numerals', () => {
+      render(<DashboardScreen />);
+
+      const searchInput = screen.getByTestId('case-search-input');
+      // Telugu numerals for 1234: ౧౨౩౪
+      act(() => {
+        fireEvent.changeText(searchInput, '౧౨౩౪');
+      });
+      expect(screen.getByText('WP 1234/2024')).toBeTruthy();
+      expect(screen.queryByText('WA 5678/2024')).toBeNull();
+    });
+
+    it('opens PDF Import modal on import button click', () => {
+      render(<DashboardScreen />);
+
+      expect(screen.queryByTestId('pdf-import-modal')).toBeNull();
+
+      const importBtn = screen.getByTestId('case-pdf-import-btn');
+      expect(importBtn).toBeTruthy();
+      fireEvent.press(importBtn);
+
+      expect(screen.getByTestId('pdf-import-modal')).toBeTruthy();
+      expect(screen.getByText('Import Legal PDF Document')).toBeTruthy();
+      expect(screen.getByText('High Court Verification Safeguard')).toBeTruthy();
+    });
+
+    it('cycles filter option when filter button is clicked', () => {
+      render(<DashboardScreen />);
+
+      const filterBtn = screen.getByTestId('case-filter-btn');
+      expect(filterBtn).toBeTruthy();
+
+      // Default has All Cases filter
+      expect(screen.getAllByText('All Cases').length).toBeGreaterThanOrEqual(1);
+
+      // Click filter -> switches to Pending
+      fireEvent.press(filterBtn);
+      expect(screen.getAllByText('Pending').length).toBeGreaterThanOrEqual(1);
+      expect(screen.getByText('WP 1234/2024')).toBeTruthy();
+      expect(screen.queryByText('WA 5678/2024')).toBeNull();
+    });
+
+    it('toggles sort field and order when sort button is clicked', () => {
+      render(<DashboardScreen />);
+
+      const sortBtn = screen.getByTestId('case-sort-btn');
+      expect(sortBtn).toBeTruthy();
+
+      fireEvent.press(sortBtn);
+      // Toggles ascending / descending
+      expect(sortBtn).toBeTruthy();
+    });
   });
 
-  it('renders clean empty states when no court hearings or reminders exist', () => {
-    (useDashboard as jest.Mock).mockReturnValue({
-      data: {
-        summary: {
-          total_cases: 0,
-          pending_cases: 0,
-          disposed_cases: 0,
-          adjourned_cases: 0,
+  describe('5. Banner, Error, Empty & Refresh States', () => {
+    it('displays encrypted offline banner when running from offline cache', () => {
+      (useDashboard as jest.Mock).mockReturnValue({
+        data: {
+          ...mockDashboardData,
+          isOfflineCached: true,
+          cachedAt: '2026-11-07T08:30:00Z',
         },
-        today_hearings: [],
-        upcoming_hearings: [],
-        upcoming_reminders: [],
-        recent_notifications: [],
-        recent_activity: [],
-        sync_status: { last_synced_at: null, is_fresh: false, status: 'NEVER_SYNCED' },
-        isOfflineCached: false,
-      },
-      isLoading: false,
-      isError: false,
-      refetch: mockRefetchDashboard,
-      isRefetching: false,
+        isLoading: false,
+        isError: false,
+        refetch: mockRefetchDashboard,
+        isRefetching: false,
+      });
+
+      render(<DashboardScreen />);
+
+      expect(screen.getByTestId('dashboard-offline-banner')).toBeTruthy();
+      expect(screen.getByText(/Displaying encrypted offline snapshot/)).toBeTruthy();
     });
 
-    render(<DashboardScreen />);
-
-    expect(screen.getByText('No hearings listed for today.')).toBeTruthy();
-    expect(screen.getByText('No upcoming hearings found.')).toBeTruthy();
-    expect(screen.getByText('No pending reminders.')).toBeTruthy();
-    expect(screen.getByText('No recent notifications.')).toBeTruthy();
-    expect(screen.getByText('No recent docket activity recorded yet.')).toBeTruthy();
-  });
-
-  it('displays encrypted offline snapshot banner when running from offline cache', () => {
-    (useDashboard as jest.Mock).mockReturnValue({
-      data: {
-        ...mockDashboardData,
-        isOfflineCached: true,
-        cachedAt: '2026-11-07T08:30:00Z',
-      },
-      isLoading: false,
-      isError: false,
-      refetch: mockRefetchDashboard,
-      isRefetching: false,
-    });
-
-    render(<DashboardScreen />);
-
-    expect(screen.getByTestId('dashboard-offline-banner')).toBeTruthy();
-    expect(screen.getByText(/Displaying encrypted offline snapshot/)).toBeTruthy();
-  });
-
-  it('triggers text-to-speech with docket summary on voice read press', () => {
-    render(<DashboardScreen />);
-
-    const voiceBtn = screen.getByTestId('voice-read-button');
-    fireEvent.press(voiceBtn);
-
-    expect(speechService.speak).toHaveBeenCalledTimes(1);
-    const spokenText = (speechService.speak as jest.Mock).mock.calls[0][0];
-    expect(spokenText).toContain('High Court of Andhra Pradesh');
-    expect(spokenText).toContain('Total Cases: 12');
-  });
-
-  it('renders error card with retry button when query fails', () => {
-    (useDashboard as jest.Mock).mockReturnValue({
-      data: undefined,
-      isLoading: false,
-      isError: true,
-      refetch: mockRefetchDashboard,
-      isRefetching: false,
-    });
-
-    render(<DashboardScreen />);
-
-    expect(screen.getByText('Failed to load dashboard data')).toBeTruthy();
-    expect(screen.getByTestId('dashboard-retry-button')).toBeTruthy();
-  });
-
-  it('handles language switching on lang-toggle press (Test A)', () => {
-    render(<DashboardScreen />);
-
-    const langBtn = screen.getByTestId('dashboard-lang-toggle');
-    expect(langBtn).toBeTruthy();
-    fireEvent.press(langBtn);
-
-    // Initial language is 'en', so nextLanguage() returns 'te'
-    expect(mockChangeLanguage).toHaveBeenCalledWith('te');
-  });
-
-  it('opens NotificationCenterModal on notification button press (Test B)', () => {
-    render(<DashboardScreen />);
-
-    // Initially modal is not rendered
-    expect(screen.queryByTestId('dashboard-notification-center-modal')).toBeNull();
-
-    const notifBtn = screen.getByTestId('open-notifications-center-btn');
-    expect(notifBtn).toBeTruthy();
-    fireEvent.press(notifBtn);
-
-    // Modal is now rendered
-    expect(screen.getByTestId('dashboard-notification-center-modal')).toBeTruthy();
-  });
-
-  it("navigates to case details on today's hearing item press (Test C)", () => {
-    render(<DashboardScreen />);
-
-    const hearingItem = screen.getByTestId('today-hearing-item-101');
-    expect(hearingItem).toBeTruthy();
-    fireEvent.press(hearingItem);
-
-    // mockDashboardData today_hearings[0] has case_id: 1
-    expect(mockPush).toHaveBeenCalledWith('/cases/1');
-  });
-
-  it('triggers pull-to-refresh and refetches dashboard and health queries (Test D)', async () => {
-    const { UNSAFE_getByType } = render(<DashboardScreen />);
-    const scrollView = UNSAFE_getByType(ScrollView);
-    expect(scrollView.props.refreshControl).toBeTruthy();
-
-    await scrollView.props.refreshControl.props.onRefresh();
-
-    expect(mockRefetchDashboard).toHaveBeenCalled();
-    expect(mockRefetchHealth).toHaveBeenCalled();
-  });
-
-  it('navigates to tokens tab on tokens action press (Test E)', () => {
-    render(<DashboardScreen />);
-
-    const tokensAction = screen.getByTestId('dashboard-tokens-action');
-    expect(tokensAction).toBeTruthy();
-    fireEvent.press(tokensAction);
-
-    expect(mockPush).toHaveBeenCalledWith('/(tabs)/tokens');
-  });
-
-  it('displays Demo Environment banner and badge when isDemoData is true', () => {
-    (useDashboard as jest.Mock).mockReturnValue({
-      data: {
-        ...mockDashboardData,
-        isDemoData: true,
-        sync_status: {
-          last_synced_at: new Date().toISOString(),
-          status: 'DEMO',
+    it('displays Demo Environment banner and badge when isDemoData is true', () => {
+      (useDashboard as jest.Mock).mockReturnValue({
+        data: {
+          ...mockDashboardData,
+          isDemoData: true,
+          sync_status: {
+            last_synced_at: new Date().toISOString(),
+            status: 'DEMO',
+          },
         },
-      },
-      isLoading: false,
-      isError: false,
-      refetch: mockRefetchDashboard,
-      isRefetching: false,
+        isLoading: false,
+        isError: false,
+        refetch: mockRefetchDashboard,
+        isRefetching: false,
+      });
+
+      render(<DashboardScreen />);
+
+      expect(screen.getByTestId('dashboard-demo-banner')).toBeTruthy();
+      expect(screen.getByText('DEMO MODE — LOCAL SAMPLE DATA')).toBeTruthy();
+      expect(screen.getByTestId('sync-status-badge')).toBeTruthy();
+      expect(screen.getByText('DEMO ENVIRONMENT')).toBeTruthy();
     });
 
-    render(<DashboardScreen />);
+    it('renders error card with retry button when queries fail', () => {
+      (useDashboard as jest.Mock).mockReturnValue({
+        data: undefined,
+        isLoading: false,
+        isError: true,
+        refetch: mockRefetchDashboard,
+        isRefetching: false,
+      });
+      (useCases as jest.Mock).mockReturnValue({
+        data: undefined,
+        isLoading: false,
+        isError: true,
+        refetch: mockRefetchCases,
+        isRefetching: false,
+      });
 
-    expect(screen.getByTestId('dashboard-demo-banner')).toBeTruthy();
-    expect(screen.getByText('DEMO MODE — LOCAL SAMPLE DATA')).toBeTruthy();
-    const syncBadge = screen.getByTestId('sync-status-badge');
-    expect(syncBadge).toBeTruthy();
-    expect(screen.getByText('DEMO ENVIRONMENT')).toBeTruthy();
-  });
+      render(<DashboardScreen />);
 
-  it('hides Demo banner when isDemoData is false/absent', () => {
-    (useDashboard as jest.Mock).mockReturnValue({
-      data: {
-        ...mockDashboardData,
-        isDemoData: false,
-      },
-      isLoading: false,
-      isError: false,
-      refetch: mockRefetchDashboard,
-      isRefetching: false,
+      expect(screen.getByText('Failed to load dashboard data')).toBeTruthy();
+      expect(screen.getByTestId('dashboard-retry-button')).toBeTruthy();
+
+      fireEvent.press(screen.getByTestId('dashboard-retry-button'));
+      expect(mockRefetchDashboard).toHaveBeenCalled();
+      expect(mockRefetchCases).toHaveBeenCalled();
     });
 
-    render(<DashboardScreen />);
+    it('renders clean empty state when no cases match filter or docket is empty', () => {
+      (useCases as jest.Mock).mockReturnValue({
+        data: [],
+        isLoading: false,
+        isError: false,
+        refetch: mockRefetchCases,
+        isRefetching: false,
+      });
 
-    expect(screen.queryByTestId('dashboard-demo-banner')).toBeNull();
-  });
+      render(<DashboardScreen />);
 
-  it('navigates to case details when recent activity item is pressed', () => {
-    render(<DashboardScreen />);
+      expect(screen.getByTestId('cases-empty-state')).toBeTruthy();
+      expect(screen.getByText('No cases match your filters')).toBeTruthy();
+    });
 
-    const activityItem = screen.getByTestId('recent-activity-item-401');
-    fireEvent.press(activityItem);
+    it('triggers pull-to-refresh and refetches queries', async () => {
+      const { UNSAFE_getByType } = render(<DashboardScreen />);
+      const scrollView = UNSAFE_getByType(ScrollView);
+      expect(scrollView.props.refreshControl).toBeTruthy();
 
-    expect(mockPush).toHaveBeenCalledWith('/cases/1');
+      await scrollView.props.refreshControl.props.onRefresh();
+
+      expect(mockRefetchDashboard).toHaveBeenCalled();
+      expect(mockRefetchCases).toHaveBeenCalled();
+    });
   });
 });

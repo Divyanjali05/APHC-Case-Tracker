@@ -13,6 +13,10 @@ jest.mock('expo-router', () => ({
   }),
 }));
 
+jest.mock('@expo/vector-icons', () => ({
+  MaterialCommunityIcons: 'MaterialCommunityIcons',
+}));
+
 jest.mock('../features/auth/AuthContext', () => ({
   useAuth: jest.fn(),
 }));
@@ -29,28 +33,30 @@ describe('Public Welcome Landing Screen', () => {
     });
   });
 
-  it('renders APHC Case Tracker branding, legal pillars, Sign In CTA, and minimal footer without dashboard clutter', () => {
+  it('renders APHC Case Tracker branding, tagline, and CTAs without dashboard clutter', () => {
     render(<WelcomeScreen />);
 
-    expect(screen.getByTestId('welcome-screen')).toBeTruthy();
-    expect(screen.getByTestId('welcome-logo')).toBeTruthy();
-    expect(screen.getByTestId('welcome-legal-visual')).toBeTruthy();
-    expect(screen.getByTestId('welcome-signin-button')).toBeTruthy();
-    expect(screen.getByTestId('welcome-footer')).toBeTruthy();
+    expect(screen.getByTestId('main-home-page')).toBeTruthy();
+    expect(screen.getByTestId('landing-logo')).toBeTruthy();
+    expect(screen.getByText('APHC Case Tracker')).toBeTruthy();
+    expect(screen.getByText('High Court of Andhra Pradesh')).toBeTruthy();
+    expect(screen.getByText('Manage Cases. Track Hearings. Stay Informed.')).toBeTruthy();
+    expect(screen.getByTestId('landing-login-button')).toBeTruthy();
+    expect(screen.getByTestId('landing-register-button')).toBeTruthy();
 
     // Ensure main case dashboard widgets are NOT exposed on public landing page
     expect(screen.queryByTestId('stat-total-cases')).toBeNull();
     expect(screen.queryByTestId('dashboard-tokens-card')).toBeNull();
   });
 
-  it('navigates to login and password recovery from public CTAs', () => {
+  it('navigates to login and register from public CTAs', () => {
     render(<WelcomeScreen />);
 
-    fireEvent.press(screen.getByTestId('welcome-signin-button'));
+    fireEvent.press(screen.getByTestId('landing-login-button'));
     expect(mockPush).toHaveBeenCalledWith('/(auth)/login');
 
-    fireEvent.press(screen.getByTestId('welcome-forgot-link'));
-    expect(mockPush).toHaveBeenCalledWith('/(auth)/forgot-password');
+    fireEvent.press(screen.getByTestId('landing-register-button'));
+    expect(mockPush).toHaveBeenCalledWith('/(auth)/register');
   });
 
   it('redirects authenticated ADMIN to /admin workspace automatically', () => {

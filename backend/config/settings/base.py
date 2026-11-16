@@ -161,12 +161,30 @@ GOOGLE_CLOUD_SPEECH_CREDENTIALS = config(
     "GOOGLE_CLOUD_SPEECH_CREDENTIALS",
     default="",
 )
-ALLOWED_DOCUMENT_EXTENSIONS = {"pdf", "docx", "jpg", "jpeg", "png"}
+ALLOWED_DOCUMENT_EXTENSIONS = {
+    "pdf",
+    "doc",
+    "docx",
+    "xls",
+    "xlsx",
+    "csv",
+    "txt",
+    "jpg",
+    "jpeg",
+    "png",
+    "webp",
+}
 ALLOWED_DOCUMENT_MIME_TYPES = {
     "application/pdf",
+    "application/msword",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "text/csv",
+    "text/plain",
     "image/jpeg",
     "image/png",
+    "image/webp",
 }
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"

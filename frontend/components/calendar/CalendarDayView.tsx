@@ -186,19 +186,23 @@ export const CalendarDayView: React.FC<CalendarDayViewProps> = ({
                 </Text>
               </View>
               {reminders.map((r: AgendaReminderItem) => (
-                <TouchableOpacity
-                  key={`r-${r.id}`}
-                  testID={`reminder-card-${r.id}`}
-                  onPress={() => onSelectEvent(r)}
-                  activeOpacity={0.7}
-                >
+                <View key={`r-${r.id}`} testID={`reminder-card-${r.id}`}>
                   <Card style={styles.eventCard}>
                     <View style={styles.cardHeader}>
-                      <Text
-                        style={[styles.cardTitle, r.is_completed && styles.completedText]}
+                      <TouchableOpacity
+                        style={{ flex: 1 }}
+                        onPress={() => onSelectEvent(r)}
+                        activeOpacity={0.7}
                       >
-                        {r.title}
-                      </Text>
+                        <Text
+                          style={[
+                            styles.cardTitle,
+                            r.is_completed && styles.completedText,
+                          ]}
+                        >
+                          {r.title}
+                        </Text>
+                      </TouchableOpacity>
                       <TouchableOpacity
                         testID={`reminder-toggle-${r.id}`}
                         onPress={() => onToggleCompleteReminder?.(r)}
@@ -215,21 +219,26 @@ export const CalendarDayView: React.FC<CalendarDayViewProps> = ({
                       </TouchableOpacity>
                     </View>
 
-                    {r.description ? (
-                      <Text style={styles.partiesText} numberOfLines={2}>
-                        {r.description}
-                      </Text>
-                    ) : null}
+                    <TouchableOpacity
+                      onPress={() => onSelectEvent(r)}
+                      activeOpacity={0.7}
+                    >
+                      {r.description ? (
+                        <Text style={styles.partiesText} numberOfLines={2}>
+                          {r.description}
+                        </Text>
+                      ) : null}
 
-                    <View style={styles.cardFooter}>
-                      <View style={styles.iconTextRow}>
-                        <AppIcon name="clock" size={12} color={Colors.text.muted} />
-                        <Text style={styles.detailText}>{r.time || r.date}</Text>
+                      <View style={styles.cardFooter}>
+                        <View style={styles.iconTextRow}>
+                          <AppIcon name="clock" size={12} color={Colors.text.muted} />
+                          <Text style={styles.detailText}>{r.time || r.date}</Text>
+                        </View>
+                        <Badge label={r.reminder_type} variant="secondary" />
                       </View>
-                      <Badge label={r.reminder_type} variant="secondary" />
-                    </View>
+                    </TouchableOpacity>
                   </Card>
-                </TouchableOpacity>
+                </View>
               ))}
             </View>
           )}

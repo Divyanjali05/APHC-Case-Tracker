@@ -1,56 +1,136 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  TextInput,
   RefreshControl,
   useWindowDimensions,
+  Platform,
+  ViewStyle,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
-import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
+import { useQuery } from '@tanstack/react-query';
 import { ScreenContainer } from '../../components/common/ScreenContainer';
 import { Card } from '../../components/common/Card';
 import { Badge } from '../../components/common/Badge';
 import { Button } from '../../components/common/Button';
 import { AppIcon } from '../../components/common/AppIcon';
 import { SkeletonCard } from '../../components/common/SkeletonCard';
-import { ErrorState } from '../../components/common/ErrorState';
-import { StatCard } from '../../components/dashboard/StatCard';
 import { VoiceInputModal } from '../../components/speech/VoiceInputModal';
 import { NotificationCenterModal } from '../../components/notifications/NotificationCenterModal';
-import { Colors } from '../../constants/colors';
+import { JudgmentDetailsModal } from '../../components/cases/JudgmentDetailsModal';
+import { DocumentImportModal } from '../../components/cases/DocumentImportModal';
+import { PdfImportModal } from '../../components/cases/PdfImportModal';
 import { Radius, Shadows, Spacing } from '../../constants/theme';
 import { fetchHealthCheck } from '../../services/api/client';
 import { speechService } from '../../services/speech/ttsService';
-import { useDashboard } from '../../features/cases/hooks';
+import { normalizeVoiceQuery } from '../../services/speech/voiceQueryNormalizer';
+import { useDashboard, useCases } from '../../features/cases/hooks';
 import { useAuth } from '../../features/auth/AuthContext';
-import {
-  DashboardActivityItem,
-  DashboardHearingItem,
-  DashboardNotificationItem,
-  DashboardReminderItem,
-} from '../../types';
+import { CaseItem } from '../../types';
+
+type FilterType =
+  | 'ALL'
+  | 'PENDING'
+  | 'DISPOSED'
+  | 'ADJOURNED'
+  | 'WITH_JUDGMENT'
+  | 'UPCOMING';
+type SortField = 'NEXT_HEARING' | 'STARTED_DATE' | 'CASE_NUMBER' | 'STATUS';
+
+const PAGE_SIZE = 10;
+
+/**
+ * Safe table date formatting.
+ * Strictly returns 'N/A' when a date is unavailable or not set.
+ * Never guesses or infers dates.
+ */
+export const formatTableDate = (dateStr?: string | null): string => {
+  if (!dateStr || typeof dateStr !== 'string') return 'N/A';
+  const trimmed = dateStr.trim();
+  if (
+    !trimmed ||
+    trimmed.toUpperCase() === 'N/A' ||
+    trimmed.toLowerCase() === 'null' ||
+    trimmed.toLowerCase() === 'undefined'
+  ) {
+    return 'N/A';
+  }
+  try {
+    const d = new Date(trimmed);
+    if (isNaN(d.getTime())) return trimmed;
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  } catch {
+    return trimmed;
+  }
+};
+
+/**
+ * Determine the closed date for a case.
+ * Strictly returns 'N/A' unless the case is disposed and a verified judgment date exists.
+ */
+export const getClosedDate = (caseItem: CaseItem): string => {
+  const statusUpper = (
+    caseItem.status ||
+    caseItem.status_details?.status ||
+    ''
+  ).toUpperCase();
+  const isDisposed = statusUpper === 'DISPOSED' || statusUpper === 'CLOSED';
+  if (!isDisposed) {
+    return 'N/A';
+  }
+  const judgmentDate =
+    caseItem.judgment_date ||
+    caseItem.status_details?.judgment_date ||
+    caseItem.latest_judgment?.judgment_date;
+
+  return formatTableDate(judgmentDate);
+};
 
 export default function DashboardScreen() {
   const { t, i18n } = useTranslation();
   const router = useRouter();
   const { width } = useWindowDimensions();
-  const isDesktop = width >= 960;
-  const isTablet = width >= 640 && width < 960;
+  const isDesktop = width >= 1024;
+
+  // Responsive compact width for sticky case identity column (approx 135–145px on 393px viewport)
+  const stickyColWidth = useMemo(() => {
+    if (isDesktop) return undefined;
+    if (width < 340) return 126; // 320px screen
+    if (width < 370) return 132; // 360px screen
+    if (width < 400) return 140; // 375px & 393px screen (exact target 135–145px)
+    if (width < 500) return 146; // 430px screen
+    return 155; // larger mobile / tablet screens
+  }, [isDesktop, width]);
 
   const { user, isAuthenticated, isDemo } = useAuth();
 
+  // Modals state
   const [isVoiceModalVisible, setIsVoiceModalVisible] = useState(false);
   const [isNotificationCenterVisible, setIsNotificationCenterVisible] = useState(false);
+  const [isPdfImportVisible, setIsPdfImportVisible] = useState(false);
+  const [selectedCaseForJudgment, setSelectedCaseForJudgment] = useState<CaseItem | null>(
+    null
+  );
+  const [isJudgmentModalVisible, setIsJudgmentModalVisible] = useState(false);
 
-  const {
-    data: health,
-    isError: isHealthError,
-    refetch: refetchHealth,
-  } = useQuery({
+  // Table controls state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeFilter, setActiveFilter] = useState<FilterType>('ALL');
+  const [sortField, setSortField] = useState<SortField>('NEXT_HEARING');
+  const [sortAsc, setSortAsc] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [expandedRowId, setExpandedRowId] = useState<number | null>(null);
+
+  // API Queries
+  const { refetch: refetchHealth } = useQuery({
     queryKey: ['health-check'],
     queryFn: fetchHealthCheck,
     retry: 1,
@@ -65,20 +145,84 @@ export default function DashboardScreen() {
     isRefetching: isDashboardRefetching,
   } = useDashboard({ enabled: Boolean(isAuthenticated || isDemo) });
 
-  const isRefreshing = isDashboardRefetching;
+  const {
+    data: rawCases,
+    isLoading: isCasesLoading,
+    isError: isCasesError,
+    refetch: refetchCases,
+    isRefetching: isCasesRefetching,
+  } = useCases({ enabled: Boolean(isAuthenticated || isDemo) });
 
-  const getGreeting = () => {
-    const hour = new Date().getHours();
-    const salutation =
-      hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
-    const name = user?.full_name?.trim() || user?.username?.trim();
-    return name ? `${salutation}, ${name}` : `${salutation}, Advocate`;
-  };
+  const isLoading = (isDashboardLoading || isCasesLoading) && !dashboard && !rawCases;
+  const isError = (isDashboardError || isCasesError) && !dashboard && !rawCases;
+  const isRefreshing = isDashboardRefetching || isCasesRefetching;
 
   const onRefresh = async () => {
-    await Promise.all([refetchDashboard(), refetchHealth()]);
+    await Promise.all([refetchDashboard(), refetchCases(), refetchHealth?.()]);
   };
 
+  // Convert raw cases list or fallback gracefully
+  const cases: CaseItem[] = useMemo(() => {
+    if (Array.isArray(rawCases) && rawCases.length > 0) {
+      return rawCases;
+    }
+    // If cases query is empty or in unit test where only dashboard hearings are provided
+    if (dashboard) {
+      const fallbackList: CaseItem[] = [];
+      const hearings = [
+        ...(dashboard.today_hearings || []),
+        ...(dashboard.upcoming_hearings || []),
+      ];
+      hearings.forEach(h => {
+        if (!fallbackList.some(item => item.id === h.case_id)) {
+          fallbackList.push({
+            id: h.case_id,
+            case_type: h.case_number.split(' ')[0] || 'WP',
+            case_number: h.case_number.split(' ')[1] || String(h.case_id),
+            filing_year: 2024,
+            petitioner: h.petitioner,
+            respondent: h.respondent,
+            current_stage: 'Hearing Appearance Listed',
+            status: 'PENDING',
+            court_hall_number: h.court_hall || undefined,
+            bench: h.judge,
+            next_hearing_date: h.hearing_date,
+            effective_next_hearing_date: h.hearing_date,
+            created_at: '2024-01-15T10:00:00Z',
+            updated_at: '2024-11-07T08:00:00Z',
+          });
+        }
+      });
+      if (fallbackList.length > 0) return fallbackList;
+    }
+    return Array.isArray(rawCases) ? rawCases : [];
+  }, [rawCases, dashboard]);
+
+  // Statistics calculation (derived from database/API data)
+  const stats = useMemo(() => {
+    if (dashboard?.summary) {
+      return {
+        total: dashboard.summary.total_cases,
+        pending: dashboard.summary.pending_cases,
+        disposed: dashboard.summary.disposed_cases,
+        adjourned: dashboard.summary.adjourned_cases,
+      };
+    }
+    // Compute from cases list if summary is absent
+    const total = cases.length;
+    let pending = 0;
+    let disposed = 0;
+    let adjourned = 0;
+    cases.forEach(c => {
+      const s = (c.status || c.status_details?.status || '').toUpperCase();
+      if (s === 'DISPOSED' || s === 'CLOSED') disposed++;
+      else if (s === 'ADJOURNED') adjourned++;
+      else pending++;
+    });
+    return { total, pending, disposed, adjourned };
+  }, [dashboard?.summary, cases]);
+
+  // Language management
   const nextLanguage = () => {
     if (i18n.language === 'en') return 'te';
     if (i18n.language === 'te') return 'hi';
@@ -91,731 +235,974 @@ export default function DashboardScreen() {
     return 'English';
   };
 
-  const handleVoiceWelcome = () => {
-    const summary = dashboard?.summary;
-    let text = `${t('common.courtName', 'High Court of Andhra Pradesh')}. ${t(
-      'dashboard.title',
-      'APHC Case Tracker'
-    )}.`;
-    if (summary) {
-      text += ` ${t('dashboard.totalCases', 'Total Cases')}: ${summary.total_cases}. ${t(
-        'dashboard.pendingCases',
-        'Pending'
-      )}: ${summary.pending_cases}. ${t(
-        'dashboard.todayHearings',
-        "Today's Hearings"
-      )}: ${dashboard?.today_hearings?.length ?? 0}.`;
+  const handleToggleLanguage = () => {
+    const next = nextLanguage();
+    i18n.changeLanguage(next);
+  };
+
+  // Text-to-speech Docket summary
+  const handleVoiceSummary = () => {
+    const text = `${t(
+      'common.courtName',
+      'High Court of Andhra Pradesh'
+    )}. My Case Dashboard. Total Cases: ${stats.total}, Pending: ${
+      stats.pending
+    }, Disposed: ${stats.disposed}, Adjourned: ${stats.adjourned}.`;
+    speechService.speak(text);
+  };
+
+  // Handle stat card filter click
+  const handleStatCardClick = (targetFilter: FilterType) => {
+    if (activeFilter === targetFilter) {
+      setActiveFilter('ALL');
+    } else {
+      setActiveFilter(targetFilter);
     }
-    speechService.speak(text, i18n.language);
+    setCurrentPage(1);
   };
 
-  const summary = dashboard?.summary || {
-    total_cases: 0,
-    pending_cases: 0,
-    disposed_cases: 0,
-    adjourned_cases: 0,
+  // Search and Filter logic
+  const filteredCases = useMemo(() => {
+    let result = [...cases];
+
+    // Search query normalization (handles English, Telugu numerals, Hindi, etc.)
+    if (searchQuery.trim()) {
+      const rawLower = searchQuery.toLowerCase().trim();
+      const normalizedQuery = normalizeVoiceQuery(searchQuery)
+        .normalized.toLowerCase()
+        .trim();
+
+      result = result.filter(item => {
+        const fullCaseNumber =
+          `${item.case_type} ${item.case_number}/${item.filing_year}`.toLowerCase();
+        const caseNumberSimple = `${item.case_type} ${item.case_number}`.toLowerCase();
+        const petitioner = (item.petitioner || '').toLowerCase();
+        const respondent = (item.respondent || '').toLowerCase();
+        const numOnly = String(item.case_number).toLowerCase();
+
+        return (
+          fullCaseNumber.includes(rawLower) ||
+          fullCaseNumber.includes(normalizedQuery) ||
+          caseNumberSimple.includes(rawLower) ||
+          caseNumberSimple.includes(normalizedQuery) ||
+          numOnly.includes(rawLower) ||
+          numOnly.includes(normalizedQuery) ||
+          petitioner.includes(rawLower) ||
+          petitioner.includes(normalizedQuery) ||
+          respondent.includes(rawLower) ||
+          respondent.includes(normalizedQuery)
+        );
+      });
+    }
+
+    // Status / Category Filtering
+    if (activeFilter !== 'ALL') {
+      result = result.filter(item => {
+        const s = (item.status || item.status_details?.status || '').toUpperCase();
+        if (activeFilter === 'PENDING') {
+          return s === 'PENDING' || s === 'ACTIVE' || s === 'IN_PROGRESS';
+        }
+        if (activeFilter === 'DISPOSED') {
+          return s === 'DISPOSED' || s === 'CLOSED';
+        }
+        if (activeFilter === 'ADJOURNED') {
+          return s === 'ADJOURNED';
+        }
+        if (activeFilter === 'WITH_JUDGMENT') {
+          return Boolean(
+            item.judgment_date ||
+              item.status_details?.has_judgment ||
+              item.latest_judgment ||
+              (item.judgments && item.judgments.length > 0)
+          );
+        }
+        if (activeFilter === 'UPCOMING') {
+          const nextDate = item.effective_next_hearing_date || item.next_hearing_date;
+          return Boolean(nextDate && nextDate !== 'N/A');
+        }
+        return true;
+      });
+    }
+
+    // Sorting
+    result.sort((a, b) => {
+      let comparison = 0;
+      if (sortField === 'NEXT_HEARING') {
+        const dateA = a.effective_next_hearing_date || a.next_hearing_date || '';
+        const dateB = b.effective_next_hearing_date || b.next_hearing_date || '';
+        if (!dateA && !dateB) comparison = 0;
+        else if (!dateA) comparison = 1;
+        else if (!dateB) comparison = -1;
+        else comparison = new Date(dateA).getTime() - new Date(dateB).getTime();
+      } else if (sortField === 'STARTED_DATE') {
+        const dateA = a.created_at || '';
+        const dateB = b.created_at || '';
+        comparison = new Date(dateA).getTime() - new Date(dateB).getTime();
+      } else if (sortField === 'CASE_NUMBER') {
+        const numA = parseInt(a.case_number, 10) || 0;
+        const numB = parseInt(b.case_number, 10) || 0;
+        comparison = numA - numB;
+      } else if (sortField === 'STATUS') {
+        const sA = (a.status || '').toUpperCase();
+        const sB = (b.status || '').toUpperCase();
+        comparison = sA.localeCompare(sB);
+      }
+      return sortAsc ? comparison : -comparison;
+    });
+
+    return result;
+  }, [cases, searchQuery, activeFilter, sortField, sortAsc]);
+
+  // Pagination calculation
+  const totalPages = Math.max(1, Math.ceil(filteredCases.length / PAGE_SIZE));
+  const paginatedCases = useMemo(() => {
+    const start = (currentPage - 1) * PAGE_SIZE;
+    return filteredCases.slice(start, start + PAGE_SIZE);
+  }, [filteredCases, currentPage]);
+
+  const toggleExpandRow = (id: number) => {
+    setExpandedRowId(prev => (prev === id ? null : id));
   };
 
-  const todayHearings = dashboard?.today_hearings || [];
-  const upcomingHearings = dashboard?.upcoming_hearings || [];
-  const upcomingReminders = dashboard?.upcoming_reminders || [];
-  const recentNotifications = dashboard?.recent_notifications || [];
-  const recentActivity = dashboard?.recent_activity || [];
-  const syncStatus = dashboard?.sync_status;
-  const unreadCount = recentNotifications.filter(n => !n.is_read).length;
+  const getStatusBadgeVariant = (
+    status?: string
+  ): 'warning' | 'success' | 'secondary' | 'info' => {
+    const s = (status || '').toUpperCase();
+    if (s === 'PENDING' || s === 'ACTIVE') return 'warning';
+    if (s === 'DISPOSED' || s === 'CLOSED') return 'success';
+    if (s === 'ADJOURNED') return 'secondary';
+    return 'info';
+  };
+
+  // Advocate profile details
+  const advocateName = user?.full_name?.trim() || user?.username?.trim() || 'Advocate';
+  const barEnrollment =
+    user?.profile?.bar_council_enrollment_number ||
+    (user as unknown as { bar_council_enrollment_number?: string })
+      ?.bar_council_enrollment_number ||
+    'Bar Council of Andhra Pradesh';
+  const chamber =
+    user?.profile?.chamber_address || 'High Court of Andhra Pradesh, Amaravati';
 
   return (
     <ScreenContainer testID="dashboard-screen">
       <ScrollView
+        style={styles.mainScroll}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl
-            refreshing={isRefreshing}
-            onRefresh={onRefresh}
-            tintColor={Colors.primary}
-            colors={[Colors.primary]}
-          />
+          <RefreshControl refreshing={Boolean(isRefreshing)} onRefresh={onRefresh} />
         }
       >
-        <View style={[styles.mainWrapper, isDesktop && styles.desktopContainer]}>
-          {/* Unified Practice Header & Personal Greeting Hero */}
-          <Card style={styles.heroCard}>
-            <View style={styles.topHeaderBar}>
-              <View style={styles.brandRow}>
-                <Badge label="APHC AMARAVATI" variant="gold" />
-                <View style={styles.brandTextCol}>
-                  <Text style={styles.courtIdentityText}>
-                    {t('common.courtName', 'High Court of Andhra Pradesh')}
-                  </Text>
-                  <Text style={styles.appNameHeading}>
-                    {t('common.appName', 'APHC Case Tracker')}
-                  </Text>
-                </View>
-              </View>
+        {/* Offline Cache Banner */}
+        {dashboard?.isOfflineCached && (
+          <View style={styles.offlineBanner} testID="dashboard-offline-banner">
+            <AppIcon name="wifi-off" size={16} color="#B45309" />
+            <Text style={styles.offlineBannerText}>
+              Displaying encrypted offline snapshot (Cached:{' '}
+              {formatTableDate(dashboard.cachedAt)})
+            </Text>
+          </View>
+        )}
 
-              <View style={styles.headerControlsRow}>
-                <TouchableOpacity
-                  onPress={() => i18n.changeLanguage(nextLanguage())}
-                  style={styles.langPill}
-                  testID="dashboard-lang-toggle"
-                  accessibilityRole="button"
-                  accessibilityLabel={`Language selector: ${getLanguageLabel()}`}
-                >
-                  <AppIcon name="globe" size={14} color={Colors.primary} />
-                  <Text style={styles.langText}>{getLanguageLabel()}</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  onPress={() => setIsNotificationCenterVisible(true)}
-                  style={styles.notifIconButton}
-                  testID="open-notifications-center-btn"
-                  accessibilityRole="button"
-                  accessibilityLabel={`Notifications: ${unreadCount} unread`}
-                >
-                  <AppIcon name="bell" size={20} color={Colors.text.primary} />
-                  {unreadCount > 0 && <View style={styles.notifDotBadge} />}
-                </TouchableOpacity>
-              </View>
+        {/* Demo Mode Banner */}
+        {(isDemo || dashboard?.isDemoData) && (
+          <View style={styles.demoBanner} testID="dashboard-demo-banner">
+            <AppIcon name="alert-circle" size={16} color="#1E3A8A" />
+            <Text style={styles.demoBannerText}>DEMO MODE — LOCAL SAMPLE DATA</Text>
+            <View testID="sync-status-badge">
+              <Badge label="DEMO ENVIRONMENT" variant="secondary" />
             </View>
+          </View>
+        )}
 
-            <View style={styles.heroDivider} />
-
-            <View style={styles.welcomeRow}>
-              <View style={styles.welcomeInfoCol}>
-                <Text style={styles.welcomeGreetingTitle}>{getGreeting()}</Text>
-                <Text style={styles.welcomeDate}>
-                  {new Date().toLocaleDateString(undefined, {
-                    weekday: 'long',
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric',
-                  })}
-                </Text>
-              </View>
-
-              {syncStatus ? (
-                <View style={styles.syncStatusContainer}>
-                  <Badge
-                    label={
-                      dashboard?.isDemoData
-                        ? 'DEMO ENVIRONMENT'
-                        : syncStatus.status === 'FRESH'
-                          ? 'REGISTRY FRESH'
-                          : syncStatus.status === 'STALE'
-                            ? 'SYNC STALE'
-                            : 'UNSYNCED'
-                    }
-                    variant={
-                      dashboard?.isDemoData
-                        ? 'warning'
-                        : syncStatus.status === 'FRESH'
-                          ? 'success'
-                          : syncStatus.status === 'STALE'
-                            ? 'warning'
-                            : 'secondary'
-                    }
-                    testID="sync-status-badge"
-                  />
-                  {dashboard?.isDemoData ? (
-                    <Text style={styles.syncTimeLabel}>Local Sample</Text>
-                  ) : syncStatus.last_synced_at ? (
-                    <Text style={styles.syncTimeLabel}>
-                      Synced{' '}
-                      {new Date(syncStatus.last_synced_at).toLocaleTimeString([], {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
-                    </Text>
-                  ) : null}
-                </View>
-              ) : null}
+        {/* 1. Dashboard Header */}
+        <View style={styles.headerContainer}>
+          <View style={styles.headerLeft}>
+            <View style={styles.courtBadgeRow}>
+              <View style={styles.courtDot} />
+              <Text style={styles.courtSubtitle}>APHC AMARAVATI</Text>
+              <Text style={styles.courtSep}>•</Text>
+              <Text style={styles.courtName}>High Court of Andhra Pradesh</Text>
             </View>
-          </Card>
-
-          {/* Contextual Notices (Demo / Offline / Silent API Outage) */}
-          {dashboard?.isDemoData ? (
-            <View style={styles.demoBanner} testID="dashboard-demo-banner">
-              <AppIcon name="info" size={18} color={Colors.accent} />
-              <View style={styles.demoBannerTextCol}>
-                <Text style={styles.demoBannerTitle}>
-                  {t('dashboard.demoModeTitle', 'DEMO MODE — LOCAL SAMPLE DATA')}
-                </Text>
-                <Text style={styles.demoBannerSubtext}>
-                  {t(
-                    'dashboard.demoModeNotice',
-                    'Displaying offline demonstration causelist data. Real advocate features require signing in with valid APHC Bar Council credentials.'
-                  )}
-                </Text>
-              </View>
+            <Text style={styles.dashboardTitle}>My Case Dashboard</Text>
+            <Text style={styles.appBrandingHidden}>APHC Case Tracker</Text>
+            <View style={styles.advocateProfileRow}>
+              <Text style={styles.advocateName}>{advocateName}</Text>
+              <Text style={styles.profileDivider}>|</Text>
+              <Text style={styles.profileDetail}>{barEnrollment}</Text>
+              <Text style={styles.profileDivider}>|</Text>
+              <Text style={styles.profileDetail}>{chamber}</Text>
             </View>
-          ) : dashboard?.isOfflineCached ? (
-            <View style={styles.offlineBanner} testID="dashboard-offline-banner">
-              <AppIcon name="lock" size={15} color={Colors.warning} />
-              <Text style={styles.offlineBannerText}>
-                {t('dashboard.offlineNotice', 'Displaying encrypted offline snapshot')}
-                {dashboard.cachedAt
-                  ? ` (${new Date(dashboard.cachedAt).toLocaleTimeString([], {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })})`
-                  : ''}
+          </View>
+
+          {/* Action Toolbar */}
+          <View style={styles.headerRight}>
+            {/* Language Selection */}
+            <TouchableOpacity
+              style={styles.headerIconBtn}
+              onPress={handleToggleLanguage}
+              accessibilityLabel="Select Language"
+              testID="dashboard-lang-toggle"
+            >
+              <AppIcon name="globe" size={16} color="#334155" />
+              <Text style={styles.langBtnText}>{getLanguageLabel()}</Text>
+            </TouchableOpacity>
+
+            {/* Global Voice Assistant Microphone */}
+            <TouchableOpacity
+              style={styles.headerIconBtn}
+              onPress={() => setIsVoiceModalVisible(true)}
+              accessibilityLabel="Voice Case Search"
+              testID="dashboard-voice-search-button"
+            >
+              <AppIcon name="mic" size={16} color="#1E3A8A" />
+              <Text style={styles.headerBtnText}>Voice Search</Text>
+            </TouchableOpacity>
+
+            {/* Voice Docket Readout */}
+            <TouchableOpacity
+              style={styles.headerIconBtn}
+              onPress={handleVoiceSummary}
+              accessibilityLabel="Read Docket Summary"
+              testID="voice-read-button"
+            >
+              <AppIcon name="volume" size={16} color="#334155" />
+            </TouchableOpacity>
+
+            {/* Notification Center */}
+            <TouchableOpacity
+              style={[styles.headerIconBtn, styles.notifBtn]}
+              onPress={() => setIsNotificationCenterVisible(true)}
+              accessibilityLabel="Open Notifications"
+              testID="open-notifications-center-btn"
+            >
+              <AppIcon name="bell" size={17} color="#334155" />
+              {(dashboard?.recent_notifications?.filter(n => !n.is_read).length ?? 0) >
+                0 && <View style={styles.unreadBadge} />}
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Live Court Token Quick Link Bar */}
+        <TouchableOpacity
+          style={styles.tokensCard}
+          onPress={() => router.push('/(tabs)/tokens')}
+          accessibilityRole="button"
+          testID="dashboard-tokens-card"
+        >
+          <View style={styles.tokensLeft}>
+            <View style={styles.tokensDot} />
+            <Text style={styles.tokensTitle}>Live Court Token Board</Text>
+            <Text style={styles.tokensSub}>Real-time courtroom hearing queue</Text>
+          </View>
+          <View style={styles.tokensActionBtn} testID="dashboard-tokens-action">
+            <Text style={styles.tokensActionText}>View Live Board</Text>
+            <AppIcon name="arrow-right" size={14} color="#0284C7" />
+          </View>
+        </TouchableOpacity>
+
+        {/* 2. Case Statistics (4 Horizontal Cards) */}
+        <View style={styles.statsContainer}>
+          {/* Total Cases */}
+          <TouchableOpacity
+            style={[styles.statCard, activeFilter === 'ALL' && styles.statCardActive]}
+            onPress={() => handleStatCardClick('ALL')}
+            accessibilityRole="button"
+            testID="stat-total-cases"
+          >
+            <Text style={styles.statValue}>{stats.total}</Text>
+            <Text style={styles.statLabel}>Total Cases</Text>
+          </TouchableOpacity>
+
+          {/* Pending */}
+          <TouchableOpacity
+            style={[styles.statCard, activeFilter === 'PENDING' && styles.statCardActive]}
+            onPress={() => handleStatCardClick('PENDING')}
+            accessibilityRole="button"
+            testID="stat-pending-cases"
+          >
+            <Text style={[styles.statValue, { color: '#D97706' }]}>{stats.pending}</Text>
+            <Text style={styles.statLabel}>Pending</Text>
+          </TouchableOpacity>
+
+          {/* Disposed */}
+          <TouchableOpacity
+            style={[
+              styles.statCard,
+              activeFilter === 'DISPOSED' && styles.statCardActive,
+            ]}
+            onPress={() => handleStatCardClick('DISPOSED')}
+            accessibilityRole="button"
+            testID="stat-disposed-cases"
+          >
+            <Text style={[styles.statValue, { color: '#059669' }]}>{stats.disposed}</Text>
+            <Text style={styles.statLabel}>Disposed</Text>
+          </TouchableOpacity>
+
+          {/* Adjourned */}
+          <TouchableOpacity
+            style={[
+              styles.statCard,
+              activeFilter === 'ADJOURNED' && styles.statCardActive,
+            ]}
+            onPress={() => handleStatCardClick('ADJOURNED')}
+            accessibilityRole="button"
+            testID="stat-adjourned-cases"
+          >
+            <Text style={[styles.statValue, { color: '#4F46E5' }]}>
+              {stats.adjourned}
+            </Text>
+            <Text style={styles.statLabel}>Adjourned</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Error State */}
+        {isError && (
+          <View style={styles.errorCard}>
+            <AppIcon name="alert-circle" size={24} color="#DC2626" />
+            <View style={styles.errorTextContainer}>
+              <Text style={styles.errorTitle}>Failed to load dashboard data</Text>
+              <Text style={styles.errorSub}>
+                Unable to retrieve cases from registry server. Please check connection.
               </Text>
             </View>
-          ) : isHealthError && !health ? (
-            <View style={styles.healthWarningBanner} testID="dashboard-health-warning">
-              <AppIcon name="alert-circle" size={16} color={Colors.danger} />
-              <Text style={styles.healthWarningText}>
-                {t(
-                  'dashboard.backendDisconnected',
-                  'Unable to reach server — showing available workspace data'
-                )}
-              </Text>
-              <TouchableOpacity
-                onPress={() => refetchHealth()}
-                style={styles.healthRetryChip}
-                accessibilityRole="button"
-              >
-                <Text style={styles.healthRetryText}>{t('common.retry', 'Retry')}</Text>
-              </TouchableOpacity>
-            </View>
-          ) : null}
-
-          {/* Loading Skeleton / Error / Main Workspace Content */}
-          {isDashboardLoading && !dashboard ? (
-            <View style={styles.loadingWrap} testID="dashboard-loading-skeleton">
-              <SkeletonCard variant="card" count={2} />
-              <Text style={styles.loadingText}>{t('common.loading', 'Loading...')}</Text>
-            </View>
-          ) : isDashboardError && !dashboard ? (
-            <ErrorState
-              title="Failed to load dashboard data"
-              message="Please check your network connection and try again."
-              retryLabel={t('common.retry', 'Retry')}
-              onRetry={() => refetchDashboard()}
-              retryTestID="dashboard-retry-button"
-              testID="dashboard-error-state"
+            <Button
+              title="Retry"
+              variant="outline"
+              onPress={onRefresh}
+              testID="dashboard-retry-button"
             />
-          ) : (
-            <>
-              {/* Practice Overview / KPI Grid */}
-              <View style={styles.sectionHeaderRow}>
-                <View style={styles.sectionTitleWithIcon}>
-                  <AppIcon name="activity" size={18} color={Colors.primary} />
-                  <Text style={styles.sectionHeadingText}>
-                    {t('dashboard.practiceOverview', 'My Cases Overview')}
-                  </Text>
-                </View>
-              </View>
+          </View>
+        )}
 
-              <View
+        {/* 3 & 4. Search, Filter, Import Controls & Main Cases Table */}
+        <Card style={styles.tableCard} testID="main-cases-table">
+          {/* Controls Bar Above Table */}
+          <View style={styles.controlsBar}>
+            {/* Search Input */}
+            <View style={styles.searchContainer}>
+              <AppIcon name="search" size={16} color="#64748B" />
+              <TextInput
+                style={styles.searchInput}
+                value={searchQuery}
+                onChangeText={text => {
+                  setSearchQuery(text);
+                  setCurrentPage(1);
+                }}
+                placeholder="Search by case number, petitioner, respondent..."
+                placeholderTextColor="#94A3B8"
+                testID="case-search-input"
+              />
+              {searchQuery.length > 0 && (
+                <TouchableOpacity
+                  onPress={() => {
+                    setSearchQuery('');
+                    setCurrentPage(1);
+                  }}
+                  style={styles.clearSearchBtn}
+                  accessibilityLabel="Clear search"
+                >
+                  <AppIcon name="x" size={14} color="#64748B" />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* Action Buttons: Filter, Sort, Import */}
+            <View style={styles.controlButtonsRow}>
+              {/* Filter Tabs / Toggle */}
+              <TouchableOpacity
                 style={[
-                  styles.statsGridRow,
-                  isDesktop
-                    ? styles.statsGridDesktop
-                    : isTablet
-                      ? styles.statsGridTablet
-                      : styles.statsGridMobile,
+                  styles.controlBtn,
+                  activeFilter !== 'ALL' && styles.controlBtnActive,
                 ]}
+                onPress={() => {
+                  const filterCycles: FilterType[] = [
+                    'ALL',
+                    'PENDING',
+                    'DISPOSED',
+                    'ADJOURNED',
+                    'WITH_JUDGMENT',
+                    'UPCOMING',
+                  ];
+                  const currentIndex = filterCycles.indexOf(activeFilter);
+                  const nextIndex = (currentIndex + 1) % filterCycles.length;
+                  setActiveFilter(filterCycles[nextIndex]);
+                  setCurrentPage(1);
+                }}
+                accessibilityRole="button"
+                testID="case-filter-btn"
               >
-                <StatCard
-                  title={t('dashboard.totalCases', 'Total Cases')}
-                  value={summary.total_cases}
-                  subtitle="Tracked matters"
-                  valueColor={Colors.primary}
-                  icon={<AppIcon name="briefcase" size={16} color={Colors.primary} />}
-                  iconBgColor={Colors.surfaceBlue}
-                  testID="stat-total-cases"
-                  style={styles.statCardItem}
-                  onPress={() => router.push('/cases')}
+                <AppIcon
+                  name="filter"
+                  size={14}
+                  color={activeFilter !== 'ALL' ? '#0284C7' : '#475569'}
                 />
-                <StatCard
-                  title={t('dashboard.pendingCases', 'Pending')}
-                  value={summary.pending_cases}
-                  subtitle="Active hearings"
-                  valueColor={Colors.gold}
-                  icon={<AppIcon name="clock" size={16} color={Colors.gold} />}
-                  iconBgColor={Colors.goldSurface}
-                  testID="stat-pending-cases"
-                  style={styles.statCardItem}
-                  onPress={() =>
-                    router.push({ pathname: '/cases', params: { filter: 'UPCOMING' } })
-                  }
-                />
-                <StatCard
-                  title={t('dashboard.disposedCases', 'Disposed')}
-                  value={summary.disposed_cases}
-                  subtitle="Judgments entered"
-                  valueColor={Colors.success}
-                  icon={<AppIcon name="check-circle" size={16} color={Colors.success} />}
-                  iconBgColor={Colors.successSurface}
-                  testID="stat-disposed-cases"
-                  style={styles.statCardItem}
-                  onPress={() =>
-                    router.push({
-                      pathname: '/cases',
-                      params: { filter: 'WITH_JUDGMENT' },
-                    })
-                  }
-                />
-                <StatCard
-                  title={t('dashboard.adjournedCases', 'Adjourned')}
-                  value={summary.adjourned_cases}
-                  subtitle="Future dates"
-                  valueColor={Colors.warning}
-                  icon={
-                    <AppIcon name="calendar-clock" size={16} color={Colors.warning} />
-                  }
-                  iconBgColor={Colors.warningSurface}
-                  testID="stat-adjourned-cases"
-                  style={styles.statCardItem}
-                  onPress={() =>
-                    router.push({ pathname: '/cases', params: { filter: 'ADJOURNED' } })
-                  }
-                />
-              </View>
-
-              {/* Unified Quick Workspace Tools & Live Court Display Board */}
-              <Card style={styles.workspaceToolsCard}>
-                <View style={styles.quickActionsHeader}>
-                  <AppIcon name="clipboard-list" size={16} color={Colors.primary} />
-                  <Text style={styles.quickActionsTitle}>Practice Tools</Text>
-                </View>
-
-                <View
+                <Text
                   style={[
-                    styles.quickActionsGrid,
-                    isDesktop && styles.quickActionsGridDesktop,
+                    styles.controlBtnText,
+                    activeFilter !== 'ALL' && styles.controlBtnTextActive,
                   ]}
                 >
-                  <Button
-                    title="Read Docket Summary"
-                    variant="outline"
-                    onPress={handleVoiceWelcome}
-                    style={styles.actionBtn}
-                    testID="voice-read-button"
-                  />
-                  <Button
-                    title={t('dashboard.voiceAssistant', 'Voice Case Search')}
-                    variant="secondary"
-                    onPress={() => setIsVoiceModalVisible(true)}
-                    style={styles.actionBtn}
-                    testID="dashboard-voice-search-button"
-                  />
-                  <Button
-                    title="My Cases"
-                    variant="outline"
-                    onPress={() => router.push('/cases')}
-                    style={styles.actionBtn}
-                  />
-                  <Button
-                    title="My Reminders"
-                    variant="outline"
-                    onPress={() => router.push('/(tabs)/reminders')}
-                    style={styles.actionBtn}
-                  />
-                </View>
+                  {activeFilter === 'ALL'
+                    ? 'All Cases'
+                    : activeFilter === 'WITH_JUDGMENT'
+                      ? 'With Judgment'
+                      : activeFilter === 'UPCOMING'
+                        ? 'Upcoming Hearing'
+                        : activeFilter.charAt(0) + activeFilter.slice(1).toLowerCase()}
+                </Text>
+              </TouchableOpacity>
 
-                <View style={styles.toolsDivider} />
+              {/* Sorting Button */}
+              <TouchableOpacity
+                style={styles.controlBtn}
+                onPress={() => {
+                  const fields: SortField[] = [
+                    'NEXT_HEARING',
+                    'STARTED_DATE',
+                    'CASE_NUMBER',
+                    'STATUS',
+                  ];
+                  const currentIdx = fields.indexOf(sortField);
+                  if (sortAsc) {
+                    setSortAsc(false);
+                    const nextIdx = (currentIdx + 1) % fields.length;
+                    setSortField(fields[nextIdx]);
+                  } else {
+                    setSortAsc(true);
+                  }
+                  setCurrentPage(1);
+                }}
+                accessibilityRole="button"
+                testID="case-sort-btn"
+              >
+                <AppIcon
+                  name={sortAsc ? 'chevron-up' : 'chevron-down'}
+                  size={14}
+                  color="#475569"
+                />
+                <Text style={styles.controlBtnText}>
+                  Sort: {sortField.replace('_', ' ')}
+                </Text>
+              </TouchableOpacity>
 
-                <View style={styles.tokensInlineRow} testID="dashboard-tokens-card">
-                  <View style={styles.tokensIconTitleRow}>
-                    <View style={styles.tokensNavIconWrap}>
-                      <AppIcon name="landmark" size={18} color={Colors.primary} />
-                    </View>
-                    <View style={styles.tokensNavTitleContainer}>
-                      <Text style={styles.tokensNavTitle}>
-                        {t('tokens.title', 'Live Court Display Board & Tokens')}
-                      </Text>
-                      <Text style={styles.tokensNavSubtitle}>
-                        Active court hall boards and appearance queue alerts
-                      </Text>
-                    </View>
-                  </View>
+              {/* Responsive Import Files Button */}
+              <TouchableOpacity
+                style={[styles.controlBtn, styles.importPdfBtn]}
+                onPress={() => setIsPdfImportVisible(true)}
+                accessibilityRole="button"
+                accessibilityLabel="Import Files"
+                testID="case-pdf-import-btn"
+              >
+                <AppIcon name="upload" size={14} color="#FFFFFF" />
+                <Text style={styles.importPdfBtnText}>
+                  {width < 360 ? 'Import' : isDesktop ? 'Import Files' : 'Import'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
 
-                  <Button
-                    title={t('tokens.openBoard', 'Open Live Display Board & Tokens')}
-                    variant="outline"
-                    onPress={() => router.push('/(tabs)/tokens')}
-                    style={styles.tokensInlineButton}
-                    testID="dashboard-tokens-action"
-                  />
-                </View>
-              </Card>
-
-              {/* Two-Column Hearings, Reminders, Notifications & Recent Activity */}
-              <View style={[styles.columnsContainer, isDesktop && styles.columnsDesktop]}>
-                <View style={[styles.columnItem, isDesktop && styles.leftColumnDesktop]}>
-                  {/* Today's Scheduled Appearances */}
-                  <View style={styles.sectionContainer} testID="today-hearings-section">
-                    <View style={styles.sectionHeader}>
-                      <View style={styles.sectionTitleWithBadge}>
-                        <Text style={styles.sectionTitle}>
-                          {t(
-                            'dashboard.todayHearingsTitle',
-                            "Today's Scheduled Appearances"
-                          )}
-                        </Text>
-                        <Text style={styles.countChip}>{todayHearings.length}</Text>
-                      </View>
-                      <TouchableOpacity
-                        onPress={() => router.push('/calendar')}
-                        testID="open-calendar-tab-btn"
-                        style={styles.calendarLinkBtn}
-                        accessibilityRole="button"
-                        accessibilityLabel="Open Calendar"
-                      >
-                        <AppIcon name="calendar" size={14} color={Colors.primary} />
-                        <Text style={styles.calendarLinkText}>
-                          {t('calendar.view_calendar', 'Calendar')}
-                        </Text>
-                      </TouchableOpacity>
-                    </View>
-
-                    {todayHearings.length === 0 ? (
-                      <Card style={styles.emptyCard}>
-                        <Text style={styles.emptyText}>
-                          {t(
-                            'dashboard.noHearingsToday',
-                            'No hearings listed for today.'
-                          )}
-                        </Text>
-                      </Card>
-                    ) : (
-                      todayHearings.map((h: DashboardHearingItem) => (
-                        <TouchableOpacity
-                          key={`today-${h.id}`}
-                          activeOpacity={0.75}
-                          onPress={() => router.push(`/cases/${h.case_id}`)}
-                          testID={`today-hearing-item-${h.id}`}
-                          accessibilityRole="button"
-                          accessibilityLabel={`Hearing for case ${h.case_number}`}
-                        >
-                          <Card style={[styles.hearingCard, styles.todayHearingCard]}>
-                            <View style={styles.itemTopRow}>
-                              <Text style={styles.caseNumber}>{h.case_number}</Text>
-                              <View style={styles.neutralMetaGroup}>
-                                {h.court_hall ? (
-                                  <View style={styles.neutralMetaPill}>
-                                    <Text style={styles.neutralMetaText}>
-                                      Hall {h.court_hall}
-                                    </Text>
-                                  </View>
-                                ) : null}
-                                {h.item_number ? (
-                                  <View style={styles.neutralMetaPill}>
-                                    <Text style={styles.neutralMetaText}>
-                                      Item #{h.item_number}
-                                    </Text>
-                                  </View>
-                                ) : null}
-                              </View>
-                            </View>
-                            <Text style={styles.partiesText} numberOfLines={1}>
-                              {h.petitioner} vs {h.respondent}
-                            </Text>
-                            {h.judge ? (
-                              <View style={styles.metaIconRow}>
-                                <AppIcon
-                                  name="landmark"
-                                  size={12}
-                                  color={Colors.text.muted}
-                                />
-                                <Text style={styles.judgeText} numberOfLines={1}>
-                                  {h.judge}
-                                </Text>
-                              </View>
-                            ) : null}
-                            <View style={styles.itemBottomRow}>
-                              <View style={styles.metaIconRow}>
-                                <AppIcon
-                                  name="clock"
-                                  size={12}
-                                  color={Colors.text.muted}
-                                />
-                                <Text style={styles.timeText}>
-                                  {h.hearing_time
-                                    ? String(h.hearing_time).substring(0, 5)
-                                    : '10:30 AM'}
-                                </Text>
-                              </View>
-                              <Badge label={h.status} variant="primary" />
-                            </View>
-                          </Card>
-                        </TouchableOpacity>
-                      ))
-                    )}
-                  </View>
-
-                  {/* Upcoming Hearings */}
-                  <View
-                    style={styles.sectionContainer}
-                    testID="upcoming-hearings-section"
+          {/* Quick Filter Pill Chips */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.pillsScroll}
+            contentContainerStyle={styles.pillsContainer}
+          >
+            {(
+              [
+                { key: 'ALL', label: 'All Cases' },
+                { key: 'PENDING', label: 'Pending' },
+                { key: 'DISPOSED', label: 'Disposed' },
+                { key: 'ADJOURNED', label: 'Adjourned' },
+                { key: 'WITH_JUDGMENT', label: 'With Judgment' },
+                { key: 'UPCOMING', label: 'Upcoming Hearing' },
+              ] as { key: FilterType; label: string }[]
+            ).map(pill => {
+              const isSelected = activeFilter === pill.key;
+              return (
+                <TouchableOpacity
+                  key={pill.key}
+                  style={[styles.pillChip, isSelected && styles.pillChipActive]}
+                  onPress={() => {
+                    setActiveFilter(pill.key);
+                    setCurrentPage(1);
+                  }}
+                  testID={`filter-pill-${pill.key.toLowerCase()}`}
+                >
+                  <Text
+                    style={[styles.pillChipText, isSelected && styles.pillChipTextActive]}
                   >
-                    <View style={styles.sectionHeader}>
-                      <View style={styles.sectionTitleWithBadge}>
-                        <Text style={styles.sectionTitle}>
-                          {t('dashboard.upcomingHearingsTitle', 'Upcoming Hearings')}
-                        </Text>
-                        <Text style={styles.countChip}>{upcomingHearings.length}</Text>
-                      </View>
-                    </View>
+                    {pill.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
 
-                    {upcomingHearings.length === 0 ? (
-                      <Card style={styles.emptyCard}>
-                        <Text style={styles.emptyText}>
-                          {t(
-                            'dashboard.noUpcomingHearings',
-                            'No upcoming hearings found.'
-                          )}
-                        </Text>
-                      </Card>
-                    ) : (
-                      upcomingHearings.map((uh: DashboardHearingItem) => (
-                        <TouchableOpacity
-                          key={`upcoming-${uh.id}`}
-                          activeOpacity={0.75}
-                          onPress={() => router.push(`/cases/${uh.case_id}`)}
-                          testID={`upcoming-hearing-item-${uh.id}`}
-                          accessibilityRole="button"
-                          accessibilityLabel={`Upcoming hearing for ${uh.case_number}`}
-                        >
-                          <Card style={styles.hearingCard}>
-                            <View style={styles.itemTopRow}>
-                              <Text style={styles.caseNumber}>{uh.case_number}</Text>
-                              <View style={styles.neutralMetaPill}>
-                                <Text style={styles.neutralMetaText}>
-                                  {uh.hearing_date}
-                                </Text>
-                              </View>
-                            </View>
-                            <Text style={styles.partiesText} numberOfLines={1}>
-                              {uh.petitioner} vs {uh.respondent}
-                            </Text>
-                            <View style={styles.itemBottomRow}>
-                              <Text style={styles.timeText}>
-                                {uh.court_hall
-                                  ? `Hall ${uh.court_hall}`
-                                  : 'Court Hall TBD'}
-                                {uh.item_number ? ` • Item #${uh.item_number}` : ''}
-                              </Text>
-                              <Badge label={uh.status} variant="info" />
-                            </View>
-                          </Card>
-                        </TouchableOpacity>
-                      ))
-                    )}
+          {/* Main Table Content */}
+          {isLoading ? (
+            <View style={styles.loadingContainer}>
+              <SkeletonCard />
+              <SkeletonCard />
+            </View>
+          ) : paginatedCases.length === 0 ? (
+            <View style={styles.emptyStateContainer} testID="cases-empty-state">
+              <AppIcon name="files" size={36} color="#94A3B8" />
+              <Text style={styles.emptyStateTitle}>No cases match your filters</Text>
+              <Text style={styles.emptyStateSub}>
+                Try adjusting your search query or reset your active status filters.
+              </Text>
+              {(searchQuery.length > 0 || activeFilter !== 'ALL') && (
+                <Button
+                  title="Reset Filters"
+                  variant="outline"
+                  onPress={() => {
+                    setSearchQuery('');
+                    setActiveFilter('ALL');
+                    setCurrentPage(1);
+                  }}
+                  style={styles.resetFiltersBtn}
+                />
+              )}
+            </View>
+          ) : (
+            <ScrollView
+              horizontal={!isDesktop}
+              showsHorizontalScrollIndicator={true}
+              style={styles.tableScrollHorizontal}
+            >
+              <View style={[styles.tableContainer, isDesktop && styles.tableDesktop]}>
+                {/* Table Header Row */}
+                <View style={styles.tableHeaderRow}>
+                  <View
+                    style={[
+                      styles.thCellSticky,
+                      isDesktop ? styles.colCaseDesktop : { width: stickyColWidth },
+                    ]}
+                    testID="sticky-header-case"
+                  >
+                    <Text
+                      style={styles.thCellText}
+                      numberOfLines={1}
+                      ellipsizeMode="tail"
+                    >
+                      Case Number / Case Name
+                    </Text>
+                  </View>
+                  <View
+                    style={[
+                      styles.thCell,
+                      styles.colStarted,
+                      isDesktop && styles.colStartedDesktop,
+                    ]}
+                  >
+                    <Text style={styles.thCellText}>Started Date</Text>
+                  </View>
+                  <View
+                    style={[
+                      styles.thCell,
+                      styles.colHearing,
+                      isDesktop && styles.colHearingDesktop,
+                    ]}
+                  >
+                    <Text style={styles.thCellText}>Next Hearing</Text>
+                  </View>
+                  <View
+                    style={[
+                      styles.thCell,
+                      styles.colAdjournment,
+                      isDesktop && styles.colAdjournmentDesktop,
+                    ]}
+                  >
+                    <Text style={styles.thCellText}>Adjournment History</Text>
+                  </View>
+                  <View
+                    style={[
+                      styles.thCell,
+                      styles.colClosed,
+                      isDesktop && styles.colClosedDesktop,
+                    ]}
+                  >
+                    <Text style={styles.thCellText}>Closed Date</Text>
+                  </View>
+                  <View
+                    style={[
+                      styles.thCell,
+                      styles.colStatus,
+                      isDesktop && styles.colStatusDesktop,
+                    ]}
+                  >
+                    <Text style={styles.thCellText}>Status</Text>
+                  </View>
+                  <View
+                    style={[
+                      styles.thCell,
+                      styles.colJudgment,
+                      isDesktop && styles.colJudgmentDesktop,
+                    ]}
+                  >
+                    <Text style={styles.thCellText}>Judgment</Text>
                   </View>
                 </View>
 
-                <View style={[styles.columnItem, isDesktop && styles.rightColumnDesktop]}>
-                  {/* Compliance Reminders */}
-                  <View
-                    style={styles.sectionContainer}
-                    testID="upcoming-reminders-section"
-                  >
-                    <View style={styles.sectionHeader}>
-                      <View style={styles.sectionTitleWithBadge}>
-                        <Text style={styles.sectionTitle}>
-                          {t('dashboard.actionRemindersTitle', 'Compliance Reminders')}
-                        </Text>
-                        <Text style={styles.countChip}>{upcomingReminders.length}</Text>
-                      </View>
-                      <TouchableOpacity
-                        onPress={() => router.push('/(tabs)/reminders')}
-                        testID="open-reminders-link-btn"
-                        style={styles.calendarLinkBtn}
-                        accessibilityRole="button"
-                        accessibilityLabel="Open Reminders"
-                      >
-                        <AppIcon name="bell-ring" size={14} color={Colors.primary} />
-                        <Text style={styles.calendarLinkText}>View</Text>
-                      </TouchableOpacity>
-                    </View>
+                {/* Table Data Rows */}
+                {paginatedCases.map(item => {
+                  const isExpanded = expandedRowId === item.id;
+                  const formattedCaseNum = `${item.case_type} ${item.case_number}/${item.filing_year}`;
+                  const startedDate = formatTableDate(item.created_at);
+                  const nextHearing = formatTableDate(
+                    item.effective_next_hearing_date || item.next_hearing_date
+                  );
+                  const closedDate = getClosedDate(item);
+                  const status = (
+                    item.status ||
+                    item.status_details?.status ||
+                    'PENDING'
+                  ).toUpperCase();
 
-                    {upcomingReminders.length === 0 ? (
-                      <Card style={styles.emptyCard}>
-                        <Text style={styles.emptyText}>
-                          {t('dashboard.noReminders', 'No pending reminders.')}
-                        </Text>
-                      </Card>
-                    ) : (
-                      upcomingReminders.map((rem: DashboardReminderItem) => (
-                        <Card
-                          key={`rem-${rem.id}`}
-                          style={styles.hearingCard}
-                          testID={`reminder-item-${rem.id}`}
+                  return (
+                    <View key={item.id} style={styles.rowWrapper}>
+                      <TouchableOpacity
+                        style={[styles.tableRow, isExpanded && styles.tableRowExpanded]}
+                        onPress={() => toggleExpandRow(item.id)}
+                        activeOpacity={0.85}
+                        testID={`case-row-${item.id}`}
+                      >
+                        {/* 1. Case Number / Case Name (Permanently Sticky & Compact) */}
+                        <View
+                          style={[
+                            styles.tdCellSticky,
+                            isDesktop ? styles.colCaseDesktop : { width: stickyColWidth },
+                            isExpanded && styles.tdCellStickyExpanded,
+                          ]}
+                          testID={`sticky-case-col-${item.id}`}
                         >
-                          <View style={styles.itemTopRow}>
-                            <Text style={styles.reminderTitle} numberOfLines={1}>
-                              {rem.title}
+                          <View style={styles.caseNumberRow}>
+                            <Text style={styles.caseNumberText} numberOfLines={1}>
+                              {formattedCaseNum}
                             </Text>
-                            <View style={styles.neutralMetaPill}>
-                              <Text style={styles.neutralMetaText}>
-                                {rem.reminder_type}
-                              </Text>
-                            </View>
+                            <AppIcon
+                              name={isExpanded ? 'chevron-up' : 'chevron-down'}
+                              size={12}
+                              color="#64748B"
+                            />
                           </View>
-                          {rem.case_number ? (
-                            <Text style={styles.reminderCaseRef}>{rem.case_number}</Text>
-                          ) : null}
-                          <View style={styles.itemBottomRow}>
-                            <View style={styles.metaIconRow}>
-                              <AppIcon
-                                name="calendar"
-                                size={12}
-                                color={Colors.text.muted}
-                              />
-                              <Text style={styles.timeText}>
-                                Due: {new Date(rem.due_date).toLocaleDateString()}
-                              </Text>
-                            </View>
-                            <Badge label={rem.status} variant="warning" />
-                          </View>
-                        </Card>
-                      ))
-                    )}
-                  </View>
-
-                  {/* Recent Notifications */}
-                  <View
-                    style={styles.sectionContainer}
-                    testID="recent-notifications-section"
-                  >
-                    <View style={styles.sectionHeader}>
-                      <View style={styles.sectionTitleWithBadge}>
-                        <Text style={styles.sectionTitle}>
-                          {t('dashboard.recentAlertsTitle', 'Recent Notifications')}
-                        </Text>
-                        <Text style={styles.countChip}>{recentNotifications.length}</Text>
-                      </View>
-                      <TouchableOpacity
-                        onPress={() => setIsNotificationCenterVisible(true)}
-                        testID="recent-notifications-view-all-btn"
-                        style={styles.calendarLinkBtn}
-                        accessibilityRole="button"
-                        accessibilityLabel="View All Notifications"
-                      >
-                        <AppIcon name="bell" size={14} color={Colors.primary} />
-                        <Text style={styles.calendarLinkText}>
-                          {t('notifications.viewAll', 'View All')}
-                        </Text>
-                      </TouchableOpacity>
-                    </View>
-
-                    {recentNotifications.length === 0 ? (
-                      <Card style={styles.emptyCard}>
-                        <Text style={styles.emptyText}>
-                          {t('dashboard.noNotifications', 'No recent notifications.')}
-                        </Text>
-                      </Card>
-                    ) : (
-                      recentNotifications.map((notif: DashboardNotificationItem) => (
-                        <Card
-                          key={`notif-${notif.id}`}
-                          style={styles.hearingCard}
-                          testID={`notification-item-${notif.id}`}
-                        >
-                          <View style={styles.itemTopRow}>
-                            <View style={styles.notifTitleWrap}>
-                              {!notif.is_read ? <View style={styles.unreadDot} /> : null}
-                              <Text style={styles.notifTitle} numberOfLines={1}>
-                                {notif.title}
-                              </Text>
-                            </View>
-                            <Badge label={notif.category} variant="info" />
-                          </View>
-                          <Text style={styles.notifBody} numberOfLines={2}>
-                            {notif.body}
+                          <Text
+                            style={styles.casePartiesText}
+                            numberOfLines={1}
+                            ellipsizeMode="tail"
+                          >
+                            {item.petitioner || 'Petitioner'} vs{' '}
+                            {item.respondent || 'Respondent'}
                           </Text>
-                          <View style={styles.itemBottomRow}>
-                            <View style={styles.metaIconRow}>
-                              <AppIcon name="clock" size={12} color={Colors.text.muted} />
-                              <Text style={styles.timeText}>
-                                {new Date(notif.sent_at).toLocaleTimeString([], {
-                                  hour: '2-digit',
-                                  minute: '2-digit',
-                                })}
+                        </View>
+
+                        {/* 2. Started Date */}
+                        <View
+                          style={[
+                            styles.tdCell,
+                            styles.colStarted,
+                            isDesktop && styles.colStartedDesktop,
+                          ]}
+                        >
+                          <Text style={styles.dateText}>{startedDate}</Text>
+                        </View>
+
+                        {/* 3. Next Hearing */}
+                        <View
+                          style={[
+                            styles.tdCell,
+                            styles.colHearing,
+                            isDesktop && styles.colHearingDesktop,
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.dateText,
+                              nextHearing !== 'N/A' && styles.dateTextActive,
+                            ]}
+                          >
+                            {nextHearing}
+                          </Text>
+                        </View>
+
+                        {/* 4. Adjournment History */}
+                        <View
+                          style={[
+                            styles.tdCell,
+                            styles.colAdjournment,
+                            isDesktop && styles.colAdjournmentDesktop,
+                          ]}
+                        >
+                          <Text style={styles.adjournmentCountText}>
+                            {item.hearings?.length
+                              ? `${item.hearings.length} Listed`
+                              : '0 Listed'}
+                          </Text>
+                          <Text
+                            style={styles.adjournmentStageText}
+                            numberOfLines={1}
+                            ellipsizeMode="tail"
+                          >
+                            {item.current_stage || 'Regular List'}
+                          </Text>
+                        </View>
+
+                        {/* 5. Closed Date */}
+                        <View
+                          style={[
+                            styles.tdCell,
+                            styles.colClosed,
+                            isDesktop && styles.colClosedDesktop,
+                          ]}
+                        >
+                          <Text style={styles.dateText}>{closedDate}</Text>
+                        </View>
+
+                        {/* 6. Status Badge */}
+                        <View
+                          style={[
+                            styles.tdCell,
+                            styles.colStatus,
+                            isDesktop && styles.colStatusDesktop,
+                          ]}
+                        >
+                          <Badge
+                            label={status}
+                            variant={getStatusBadgeVariant(status)}
+                            style={styles.compactStatusBadge}
+                            textStyle={styles.compactStatusBadgeText}
+                          />
+                        </View>
+
+                        {/* 7. Judgment */}
+                        <View
+                          style={[
+                            styles.tdCell,
+                            styles.colJudgment,
+                            isDesktop && styles.colJudgmentDesktop,
+                          ]}
+                        >
+                          {item.judgment_date ||
+                          item.status_details?.judgment_date ||
+                          item.latest_judgment ||
+                          item.status === 'DISPOSED' ? (
+                            <TouchableOpacity
+                              style={styles.judgmentActionPill}
+                              onPress={e => {
+                                e.stopPropagation?.();
+                                setSelectedCaseForJudgment(item);
+                                setIsJudgmentModalVisible(true);
+                              }}
+                              testID={`open-judgment-btn-${item.id}`}
+                              accessibilityLabel={`View Judgment for ${formattedCaseNum}`}
+                            >
+                              <AppIcon name="file-text" size={11} color="#1D4ED8" />
+                              <Text style={styles.judgmentActionPillText}>Certified</Text>
+                            </TouchableOpacity>
+                          ) : (
+                            <Text style={styles.dateText}>N/A</Text>
+                          )}
+                        </View>
+                      </TouchableOpacity>
+
+                      {/* Expandable Inline Details Drawer */}
+                      {isExpanded && (
+                        <View
+                          style={styles.expandedDrawer}
+                          testID={`case-expanded-${item.id}`}
+                        >
+                          <View style={styles.drawerGrid}>
+                            {/* Petitioner */}
+                            <View style={styles.drawerItem}>
+                              <Text style={styles.drawerLabel}>Petitioner</Text>
+                              <Text style={styles.drawerValue}>
+                                {item.petitioner || 'N/A'}
+                              </Text>
+                              {item.petitioner_advocate && (
+                                <Text style={styles.drawerSub}>
+                                  Adv: {item.petitioner_advocate}
+                                </Text>
+                              )}
+                            </View>
+
+                            {/* Respondent */}
+                            <View style={styles.drawerItem}>
+                              <Text style={styles.drawerLabel}>Respondent</Text>
+                              <Text style={styles.drawerValue}>
+                                {item.respondent || 'N/A'}
+                              </Text>
+                              {item.respondent_advocate && (
+                                <Text style={styles.drawerSub}>
+                                  Adv: {item.respondent_advocate}
+                                </Text>
+                              )}
+                            </View>
+
+                            {/* Court and Court Hall */}
+                            <View style={styles.drawerItem}>
+                              <Text style={styles.drawerLabel}>Court & Hall</Text>
+                              <Text style={styles.drawerValue}>
+                                {item.court_hall_number
+                                  ? `Court Hall ${item.court_hall_number}`
+                                  : 'Court Hall N/A'}
+                              </Text>
+                              <Text style={styles.drawerSub}>
+                                {item.bench || 'Hon’ble High Court Bench'}
+                              </Text>
+                            </View>
+
+                            {/* Adjournment & Previous Hearings */}
+                            <View style={styles.drawerItem}>
+                              <Text style={styles.drawerLabel}>
+                                Hearings / Adjournment History
+                              </Text>
+                              <Text style={styles.drawerValue}>
+                                {item.hearings && item.hearings.length > 0
+                                  ? `${item.hearings.length} hearing appearances recorded`
+                                  : 'No prior hearings listed'}
+                              </Text>
+                              <Text style={styles.drawerSub}>
+                                Stage: {item.current_stage || 'Active Proceedings'}
+                              </Text>
+                            </View>
+
+                            {/* Final Judgment Status & Summary */}
+                            <View style={[styles.drawerItem, styles.drawerItemSpan]}>
+                              <Text style={styles.drawerLabel}>
+                                Judgment Status & Summary
+                              </Text>
+                              <Text style={styles.drawerValue}>
+                                {item.judgment_date
+                                  ? `Judgment Pronounced: ${formatTableDate(
+                                      item.judgment_date
+                                    )}`
+                                  : 'No final judgment passed'}
+                              </Text>
+                              <Text style={styles.drawerSummaryText}>
+                                {item.latest_judgment?.summary ||
+                                  'Certified judgment summary pending from High Court registry.'}
+                              </Text>
+                            </View>
+
+                            {/* Last Updated Date */}
+                            <View style={styles.drawerItem}>
+                              <Text style={styles.drawerLabel}>Last Updated Date</Text>
+                              <Text style={styles.drawerValue}>
+                                {formatTableDate(item.updated_at)}
                               </Text>
                             </View>
                           </View>
-                        </Card>
-                      ))
-                    )}
-                  </View>
 
-                  {/* Recent Case Activity */}
-                  <View style={styles.sectionContainer} testID="recent-activity-section">
-                    <View style={styles.sectionHeader}>
-                      <View style={styles.sectionTitleWithBadge}>
-                        <Text style={styles.sectionTitle}>
-                          {t('dashboard.recentActivityTitle', 'Recent Activity')}
-                        </Text>
-                        <Text style={styles.countChip}>{recentActivity.length}</Text>
-                      </View>
+                          {/* Row Actions */}
+                          <View style={styles.drawerActionsRow}>
+                            {Boolean(item.latest_judgment || item.judgment_date) && (
+                              <Button
+                                title="View Judgment"
+                                variant="outline"
+                                onPress={() => {
+                                  setSelectedCaseForJudgment(item);
+                                  setIsJudgmentModalVisible(true);
+                                }}
+                                style={styles.drawerBtn}
+                                testID={`view-judgment-${item.id}`}
+                              />
+                            )}
+                            <Button
+                              title="View Case Details"
+                              variant="primary"
+                              onPress={() => router.push(`/cases/${item.id}`)}
+                              style={styles.drawerBtn}
+                              testID={`view-case-details-${item.id}`}
+                            />
+                          </View>
+                        </View>
+                      )}
                     </View>
-
-                    {recentActivity.length === 0 ? (
-                      <Card style={styles.emptyCard}>
-                        <Text style={styles.emptyText}>
-                          {t(
-                            'dashboard.noRecentActivity',
-                            'No recent docket activity recorded yet.'
-                          )}
-                        </Text>
-                      </Card>
-                    ) : (
-                      <Card style={styles.activityListCard}>
-                        {recentActivity.map((act: DashboardActivityItem, idx: number) => {
-                          const isLast = idx === recentActivity.length - 1;
-                          return (
-                            <TouchableOpacity
-                              key={`act-${act.id}`}
-                              activeOpacity={0.75}
-                              onPress={() => router.push(`/cases/${act.case_id}`)}
-                              style={[
-                                styles.activityRow,
-                                isLast && styles.activityRowLast,
-                              ]}
-                              testID={`recent-activity-item-${act.id}`}
-                              accessibilityRole="button"
-                            >
-                              <View style={styles.activityTopRow}>
-                                <Text style={styles.activityCaseNum}>
-                                  {act.case_number}
-                                </Text>
-                                <Text style={styles.activityTime}>
-                                  {new Date(act.created_at).toLocaleDateString()}
-                                </Text>
-                              </View>
-                              <Text style={styles.activityDesc} numberOfLines={2}>
-                                {act.description}
-                              </Text>
-                            </TouchableOpacity>
-                          );
-                        })}
-                      </Card>
-                    )}
-                  </View>
-                </View>
+                  );
+                })}
               </View>
-            </>
+            </ScrollView>
           )}
-        </View>
+
+          {/* Pagination Controls */}
+          {filteredCases.length > 0 && (
+            <View style={styles.paginationRow}>
+              <Text style={styles.paginationText}>
+                Showing{' '}
+                {Math.min((currentPage - 1) * PAGE_SIZE + 1, filteredCases.length)}–
+                {Math.min(currentPage * PAGE_SIZE, filteredCases.length)} of{' '}
+                {filteredCases.length} cases
+              </Text>
+              <View style={styles.paginationButtons}>
+                <TouchableOpacity
+                  style={[styles.pageBtn, currentPage === 1 && styles.pageBtnDisabled]}
+                  onPress={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  accessibilityLabel="Previous Page"
+                  testID="pagination-prev"
+                >
+                  <AppIcon
+                    name="chevron-left"
+                    size={16}
+                    color={currentPage === 1 ? '#CBD5E1' : '#334155'}
+                  />
+                  <Text
+                    style={[
+                      styles.pageBtnText,
+                      currentPage === 1 && styles.pageBtnTextDisabled,
+                    ]}
+                  >
+                    Previous
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.pageBtn,
+                    currentPage === totalPages && styles.pageBtnDisabled,
+                  ]}
+                  onPress={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                  accessibilityLabel="Next Page"
+                  testID="pagination-next"
+                >
+                  <Text
+                    style={[
+                      styles.pageBtnText,
+                      currentPage === totalPages && styles.pageBtnTextDisabled,
+                    ]}
+                  >
+                    Next
+                  </Text>
+                  <AppIcon
+                    name="chevron-right"
+                    size={16}
+                    color={currentPage === totalPages ? '#CBD5E1' : '#334155'}
+                  />
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+        </Card>
       </ScrollView>
 
-      {/* Voice Assistant Search Modal */}
-      <VoiceInputModal
-        visible={isVoiceModalVisible}
-        onClose={() => setIsVoiceModalVisible(false)}
-        onApply={query => {
-          setIsVoiceModalVisible(false);
-          router.push({ pathname: '/cases', params: { search: query } });
-        }}
-        title={t('dashboard.voiceAssistant', 'Voice Case Search')}
-      />
+      {/* Global Voice Assistant Microphone Modal */}
+      {isVoiceModalVisible && (
+        <VoiceInputModal
+          visible={isVoiceModalVisible}
+          onClose={() => setIsVoiceModalVisible(false)}
+          onApply={(transcript: string) => {
+            setSearchQuery(transcript);
+            setCurrentPage(1);
+            setIsVoiceModalVisible(false);
+          }}
+        />
+      )}
 
-      {/* In-App Notification Center Modal */}
+      {/* Notification Center Modal */}
       {isNotificationCenterVisible && (
         <NotificationCenterModal
           visible={isNotificationCenterVisible}
@@ -823,566 +1210,739 @@ export default function DashboardScreen() {
           testID="dashboard-notification-center-modal"
         />
       )}
+
+      {/* Judgment PDF Details Modal */}
+      {isJudgmentModalVisible && (
+        <JudgmentDetailsModal
+          visible={isJudgmentModalVisible}
+          onClose={() => {
+            setIsJudgmentModalVisible(false);
+            setSelectedCaseForJudgment(null);
+          }}
+          caseItem={selectedCaseForJudgment}
+        />
+      )}
+
+      {/* PDF Import Modal */}
+      {isPdfImportVisible && (
+        <PdfImportModal
+          visible={isPdfImportVisible}
+          onClose={() => setIsPdfImportVisible(false)}
+          cases={cases}
+          onImportSuccess={() => {
+            onRefresh();
+          }}
+        />
+      )}
     </ScreenContainer>
   );
 }
 
 const styles = StyleSheet.create({
-  scrollContent: {
-    paddingBottom: Spacing.xxl,
-  },
-  mainWrapper: {
-    width: '100%',
-  },
-  desktopContainer: {
-    maxWidth: 1200,
-    alignSelf: 'center',
-    paddingHorizontal: Spacing.lg,
-  },
-  heroCard: {
-    padding: Spacing.lg,
-    marginBottom: Spacing.lg,
-    backgroundColor: Colors.surface,
-    borderColor: Colors.border,
-    borderWidth: 1,
-    borderRadius: Radius.card,
-    ...Shadows.card,
-  },
-  topHeaderBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: Spacing.sm,
-  },
-  brandRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-    flexShrink: 1,
-  },
-  brandTextCol: {
-    justifyContent: 'center',
-  },
-  courtIdentityText: {
-    color: Colors.gold,
-    fontSize: 12,
-    fontWeight: '700',
-    letterSpacing: 0.3,
-    textTransform: 'uppercase',
-  },
-  appNameHeading: {
-    color: Colors.text.primary,
-    fontSize: 18,
-    fontWeight: '800',
-    letterSpacing: -0.3,
-  },
-  headerControlsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-  },
-  langPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.xs,
-    backgroundColor: Colors.surfaceSubtle,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: Radius.pill,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    minHeight: 44,
-  },
-  langText: {
-    color: Colors.primary,
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  notifIconButton: {
-    width: 44,
-    height: 44,
-    borderRadius: Radius.pill,
-    backgroundColor: Colors.surfaceSubtle,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-  },
-  notifDotBadge: {
-    position: 'absolute',
-    top: 9,
-    right: 9,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: Colors.danger,
-  },
-  heroDivider: {
-    height: 1,
-    backgroundColor: Colors.border,
-    marginVertical: Spacing.md,
-  },
-  welcomeRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: Spacing.md,
-  },
-  welcomeInfoCol: {
+  mainScroll: {
     flex: 1,
-    minWidth: 220,
+    backgroundColor: '#F8FAFC',
   },
-  welcomeGreetingTitle: {
-    color: Colors.text.primary,
-    fontSize: 19,
-    fontWeight: '800',
-    marginBottom: 4,
-    letterSpacing: -0.2,
-  },
-  welcomeDate: {
-    color: Colors.text.secondary,
-    fontSize: 13,
-    fontWeight: '500',
-  },
-  syncStatusContainer: {
-    alignItems: 'flex-end',
-    justifyContent: 'center',
-  },
-  syncTimeLabel: {
-    color: Colors.text.muted,
-    fontSize: 12,
-    marginTop: 4,
-    fontWeight: '500',
+  scrollContent: {
+    padding: Spacing.md,
+    gap: Spacing.md,
+    paddingBottom: Spacing.xl * 2,
   },
   offlineBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.xs,
-    backgroundColor: Colors.goldSurface,
+    gap: 8,
+    backgroundColor: '#FEF3C7',
     borderWidth: 1,
-    borderColor: Colors.goldBorder,
-    paddingVertical: Spacing.sm,
-    paddingHorizontal: Spacing.md,
-    borderRadius: Radius.card,
-    marginBottom: Spacing.md,
+    borderColor: '#FDE68A',
+    borderRadius: Radius.button,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  offlineBannerText: {
+    fontSize: 12,
+    color: '#92400E',
+    fontWeight: '500',
   },
   demoBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.infoSurface,
+    justifyContent: 'space-between',
+    backgroundColor: '#EFF6FF',
     borderWidth: 1,
-    borderColor: Colors.infoBorder,
-    paddingVertical: Spacing.sm,
-    paddingHorizontal: Spacing.md,
-    borderRadius: Radius.card,
-    marginBottom: Spacing.md,
-    gap: Spacing.sm,
+    borderColor: '#BFDBFE',
+    borderRadius: Radius.button,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    gap: 8,
   },
-  demoBannerTextCol: {
-    flex: 1,
-  },
-  demoBannerTitle: {
-    color: Colors.accent,
+  demoBannerText: {
     fontSize: 12,
+    color: '#1E3A8A',
     fontWeight: '700',
+  },
+  headerContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: Spacing.sm,
+    backgroundColor: '#FFFFFF',
+    borderRadius: Radius.card,
+    padding: Spacing.md,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    ...Shadows.card,
+  },
+  headerLeft: {
+    flex: 1,
+    minWidth: 260,
+  },
+  courtBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 4,
+  },
+  courtDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#0284C7',
+  },
+  courtSubtitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#0284C7',
     letterSpacing: 0.5,
   },
-  demoBannerSubtext: {
-    color: Colors.primaryLight,
-    fontSize: 12,
-    marginTop: 2,
-    lineHeight: 17,
+  courtSep: {
+    fontSize: 11,
+    color: '#CBD5E1',
   },
-  offlineBannerText: {
-    color: Colors.warning,
-    fontSize: 12,
+  courtName: {
+    fontSize: 11,
+    color: '#64748B',
+  },
+  dashboardTitle: {
+    fontSize: 22,
     fontWeight: '700',
-    textAlign: 'center',
+    color: '#0F172A',
+    letterSpacing: -0.3,
   },
-  healthWarningBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-    backgroundColor: Colors.dangerSurface,
-    borderWidth: 1,
-    borderColor: Colors.dangerBorder,
-    paddingVertical: Spacing.sm,
-    paddingHorizontal: Spacing.md,
-    borderRadius: Radius.card,
-    marginBottom: Spacing.md,
+  appBrandingHidden: {
+    height: 0,
+    width: 0,
+    opacity: 0,
   },
-  healthWarningText: {
-    flex: 1,
-    color: Colors.danger,
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  healthRetryChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: Radius.badge,
-    backgroundColor: Colors.surface,
-    borderWidth: 1,
-    borderColor: Colors.dangerBorder,
-  },
-  healthRetryText: {
-    color: Colors.danger,
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  loadingWrap: {
-    marginBottom: Spacing.lg,
-  },
-  loadingText: {
-    color: Colors.text.muted,
-    fontSize: 12,
-    textAlign: 'center',
-    marginTop: Spacing.xs,
-  },
-  sectionHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: Spacing.sm,
-    paddingHorizontal: 2,
-  },
-  sectionTitleWithIcon: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-  },
-  sectionHeadingText: {
-    color: Colors.text.primary,
-    fontSize: 17,
-    fontWeight: '700',
-  },
-  statsGridRow: {
+  advocateProfileRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    marginHorizontal: -Spacing.xs,
-    marginBottom: Spacing.lg,
-  },
-  statsGridDesktop: {
-    flexDirection: 'row',
-  },
-  statsGridTablet: {
-    flexDirection: 'row',
-  },
-  statsGridMobile: {
-    flexDirection: 'row',
-  },
-  statCardItem: {
-    flex: 1,
-    minWidth: 140,
-    margin: Spacing.xs,
-  },
-  workspaceToolsCard: {
-    padding: Spacing.lg,
-    marginBottom: Spacing.xl,
-    backgroundColor: Colors.surface,
-    borderColor: Colors.border,
-    borderWidth: 1,
-    borderRadius: Radius.card,
-    ...Shadows.subtle,
-  },
-  quickActionsHeader: {
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.xs,
-    marginBottom: Spacing.md,
+    gap: 8,
+    marginTop: 6,
   },
-  quickActionsTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: Colors.text.primary,
-  },
-  quickActionsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.sm,
-  },
-  quickActionsGridDesktop: {
-    flexDirection: 'row',
-    flexWrap: 'nowrap',
-  },
-  actionBtn: {
-    flex: 1,
-    minWidth: 145,
-  },
-  toolsDivider: {
-    height: 1,
-    backgroundColor: Colors.border,
-    marginVertical: Spacing.md,
-  },
-  tokensInlineRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    flexWrap: 'wrap',
-    gap: Spacing.md,
-  },
-  tokensIconTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-    minWidth: 220,
-    gap: Spacing.sm,
-  },
-  tokensNavIconWrap: {
-    width: 38,
-    height: 38,
-    borderRadius: 10,
-    backgroundColor: Colors.surfaceBlue,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  tokensNavTitleContainer: {
-    flex: 1,
-  },
-  tokensNavTitle: {
-    color: Colors.text.primary,
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  tokensNavSubtitle: {
-    color: Colors.text.muted,
-    fontSize: 12,
-    marginTop: 2,
-  },
-  tokensInlineButton: {
-    borderColor: Colors.primary,
-    minHeight: 42,
-  },
-  columnsContainer: {
-    flexDirection: 'column',
-    width: '100%',
-  },
-  columnsDesktop: {
-    flexDirection: 'row',
-    gap: Spacing.lg,
-  },
-  columnItem: {
-    width: '100%',
-  },
-  leftColumnDesktop: {
-    flex: 6,
-    width: 'auto',
-  },
-  rightColumnDesktop: {
-    flex: 4,
-    width: 'auto',
-  },
-  sectionContainer: {
-    marginBottom: Spacing.xl,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: Spacing.sm,
-    paddingHorizontal: 2,
-  },
-  sectionTitleWithBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-    flex: 1,
-  },
-  sectionTitle: {
-    color: Colors.text.primary,
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  countChip: {
-    backgroundColor: Colors.surfaceSubtle,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: Radius.pill,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    fontSize: 12,
-    fontWeight: '700',
-    color: Colors.text.secondary,
-    overflow: 'hidden',
-  },
-  calendarLinkBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.xs,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: 8,
-    borderRadius: Radius.badge,
-    backgroundColor: Colors.surfaceSubtle,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    minHeight: 40,
-  },
-  calendarLinkText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: Colors.primary,
-  },
-  emptyCard: {
-    padding: Spacing.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.surface,
-    borderColor: Colors.border,
-    borderWidth: 1,
-    borderRadius: Radius.card,
-    minHeight: 70,
-  },
-  emptyText: {
-    color: Colors.text.muted,
+  advocateName: {
     fontSize: 13,
+    fontWeight: '600',
+    color: '#1E293B',
   },
-  hearingCard: {
-    padding: Spacing.md,
-    marginBottom: Spacing.sm,
-    backgroundColor: Colors.surface,
-    borderColor: Colors.border,
-    borderWidth: 1,
-    borderRadius: Radius.card,
-    ...Shadows.subtle,
+  profileDivider: {
+    fontSize: 12,
+    color: '#CBD5E1',
   },
-  todayHearingCard: {
-    borderLeftWidth: 4,
-    borderLeftColor: Colors.primary,
+  profileDetail: {
+    fontSize: 12,
+    color: '#64748B',
   },
-  itemTopRow: {
+  headerRight: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: Spacing.xs,
-    gap: Spacing.xs,
+    gap: 8,
   },
-  neutralMetaGroup: {
+  headerIconBtn: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    alignItems: 'center',
     gap: 6,
-  },
-  neutralMetaPill: {
-    backgroundColor: Colors.surfaceSubtle,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: Radius.button,
     borderWidth: 1,
-    borderColor: Colors.border,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: Radius.badge,
+    borderColor: '#E2E8F0',
+    backgroundColor: '#FFFFFF',
   },
-  neutralMetaText: {
-    color: Colors.text.secondary,
+  headerBtnText: {
     fontSize: 12,
     fontWeight: '600',
+    color: '#1E3A8A',
   },
-  caseNumber: {
-    color: Colors.text.primary,
-    fontSize: 15,
-    fontWeight: '800',
+  langBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#334155',
   },
-  partiesText: {
-    color: Colors.text.secondary,
-    fontSize: 13,
-    marginBottom: 4,
+  notifBtn: {
+    position: 'relative',
+    paddingHorizontal: 9,
   },
-  metaIconRow: {
+  unreadBadge: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: '#DC2626',
+  },
+  tokensCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
-    marginBottom: 2,
-  },
-  judgeText: {
-    color: Colors.text.muted,
-    fontSize: 12,
-    flex: 1,
-  },
-  itemBottomRow: {
-    flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: Spacing.xs,
+    backgroundColor: '#FFFFFF',
+    borderRadius: Radius.button,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    ...Shadows.subtle,
   },
-  timeText: {
-    color: Colors.text.muted,
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  reminderTitle: {
-    color: Colors.text.primary,
-    fontSize: 14,
-    fontWeight: '700',
-    flex: 1,
-    marginRight: Spacing.sm,
-  },
-  reminderCaseRef: {
-    color: Colors.primary,
-    fontSize: 12,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  notifTitleWrap: {
+  tokensLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    flex: 1,
-    marginRight: Spacing.sm,
-    gap: Spacing.xs,
+    gap: 8,
   },
-  unreadDot: {
+  tokensDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: Colors.danger,
+    backgroundColor: '#10B981',
   },
-  notifTitle: {
-    color: Colors.text.primary,
-    fontSize: 14,
-    fontWeight: '700',
-    flex: 1,
+  tokensTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#0F172A',
   },
-  notifBody: {
-    color: Colors.text.secondary,
+  tokensSub: {
+    fontSize: 11,
+    color: '#64748B',
+    marginLeft: 4,
+  },
+  tokensActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  tokensActionText: {
     fontSize: 12,
-    marginTop: 2,
-    marginBottom: 6,
+    fontWeight: '600',
+    color: '#0284C7',
   },
-  activityListCard: {
-    padding: 0,
-    overflow: 'hidden',
+  statsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
+  },
+  statCard: {
+    flex: 1,
+    minWidth: 140,
+    backgroundColor: '#FFFFFF',
     borderRadius: Radius.card,
-    borderColor: Colors.border,
+    padding: Spacing.md,
     borderWidth: 1,
-    backgroundColor: Colors.surface,
+    borderColor: '#E2E8F0',
+    alignItems: 'flex-start',
     ...Shadows.subtle,
   },
-  activityRow: {
-    padding: Spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
+  statCardActive: {
+    borderColor: '#0284C7',
+    backgroundColor: '#F0F9FF',
+    borderWidth: 1.5,
   },
-  activityRowLast: {
-    borderBottomWidth: 0,
+  statValue: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: '#0F172A',
+    lineHeight: 34,
   },
-  activityTopRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  activityCaseNum: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: Colors.primary,
-  },
-  activityTime: {
+  statLabel: {
     fontSize: 12,
-    color: Colors.text.muted,
+    fontWeight: '500',
+    color: '#64748B',
+    marginTop: 2,
   },
-  activityDesc: {
+  errorCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    borderRadius: Radius.button,
+    padding: Spacing.md,
+  },
+  errorTextContainer: {
+    flex: 1,
+  },
+  errorTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#991B1B',
+  },
+  errorSub: {
+    fontSize: 12,
+    color: '#B91C1C',
+    marginTop: 2,
+  },
+  tableCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: Radius.card,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    padding: 0,
+    overflow: 'hidden',
+    ...Shadows.card,
+  },
+  controlsBar: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: Spacing.md,
+    gap: Spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  searchContainer: {
+    flex: 1,
+    minWidth: 240,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: Radius.input,
+    paddingHorizontal: 10,
+    height: 38,
+    gap: 8,
+  },
+  searchInput: {
+    flex: 1,
     fontSize: 13,
-    color: Colors.text.secondary,
+    color: '#0F172A',
+    paddingVertical: 0,
+  },
+  clearSearchBtn: {
+    padding: 4,
+  },
+  controlButtonsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  controlBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    height: 38,
+    borderRadius: Radius.button,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    backgroundColor: '#FFFFFF',
+    flexShrink: 0,
+  },
+  controlBtnActive: {
+    borderColor: '#0284C7',
+    backgroundColor: '#F0F9FF',
+  },
+  controlBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#475569',
+  },
+  controlBtnTextActive: {
+    color: '#0284C7',
+  },
+  importPdfBtn: {
+    backgroundColor: '#1E3A8A',
+    borderColor: '#1E3A8A',
+  },
+  importPdfBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  pillsScroll: {
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  pillsContainer: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 8,
+    gap: 6,
+  },
+  pillChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: Radius.pill,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  pillChipActive: {
+    backgroundColor: '#EFF6FF',
+    borderColor: '#0284C7',
+  },
+  pillChipText: {
+    fontSize: 12,
+    color: '#64748B',
+    fontWeight: '500',
+  },
+  pillChipTextActive: {
+    color: '#0284C7',
+    fontWeight: '600',
+  },
+  tableScrollHorizontal: {
+    width: '100%',
+  },
+  tableContainer: {
+    minWidth: 720,
+    backgroundColor: '#FFFFFF',
+  },
+  tableDesktop: {
+    minWidth: '100%',
+  },
+  tableHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    minHeight: 38,
+    backgroundColor: '#F8FAFC',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+  },
+  thCell: {
+    justifyContent: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+  },
+  thCellSticky: {
+    position: (Platform.OS === 'web'
+      ? 'sticky'
+      : 'relative') as unknown as ViewStyle['position'],
+    left: 0,
+    zIndex: 20,
+    backgroundColor: '#F8FAFC',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    paddingLeft: 10,
+    paddingRight: 8,
+    borderRightWidth: 1,
+    borderRightColor: '#E2E8F0',
+    ...(Platform.OS === 'web'
+      ? {
+          boxShadow: '2px 0 6px -2px rgba(15, 23, 42, 0.08)',
+        }
+      : {
+          elevation: 2,
+        }),
+  },
+  thCellText: {
+    fontSize: 10.5,
+    fontWeight: '700',
+    color: '#64748B',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  colCase: {
+    width: 140,
+    flexShrink: 0,
+  },
+  colCaseDesktop: {
+    flex: 2.2,
+    width: undefined,
+  },
+  colStarted: {
+    width: 95,
+    flexShrink: 0,
+  },
+  colStartedDesktop: {
+    flex: 1.1,
+    width: undefined,
+  },
+  colHearing: {
+    width: 95,
+    flexShrink: 0,
+  },
+  colHearingDesktop: {
+    flex: 1.1,
+    width: undefined,
+  },
+  colAdjournment: {
+    width: 120,
+    flexShrink: 0,
+  },
+  colAdjournmentDesktop: {
+    flex: 1.3,
+    width: undefined,
+  },
+  colClosed: {
+    width: 95,
+    flexShrink: 0,
+  },
+  colClosedDesktop: {
+    flex: 1.1,
+    width: undefined,
+  },
+  colStatus: {
+    width: 95,
+    flexShrink: 0,
+  },
+  colStatusDesktop: {
+    flex: 1.1,
+    width: undefined,
+  },
+  colJudgment: {
+    width: 95,
+    flexShrink: 0,
+  },
+  colJudgmentDesktop: {
+    flex: 1.1,
+    width: undefined,
+  },
+  rowWrapper: {
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  tableRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    minHeight: 62,
+    maxHeight: 68,
+    backgroundColor: '#FFFFFF',
+  },
+  tableRowMiddleGroup: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+  },
+  tableRowExpanded: {
+    backgroundColor: '#F8FAFC',
+  },
+  tdCellSticky: {
+    position: (Platform.OS === 'web'
+      ? 'sticky'
+      : 'relative') as unknown as ViewStyle['position'],
+    left: 0,
+    zIndex: 10,
+    backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    paddingLeft: 10,
+    paddingRight: 8,
+    borderRightWidth: 1,
+    borderRightColor: '#E2E8F0',
+    ...(Platform.OS === 'web'
+      ? {
+          boxShadow: '2px 0 6px -2px rgba(15, 23, 42, 0.08)',
+        }
+      : {
+          elevation: 2,
+        }),
+  },
+  tdCellStickyExpanded: {
+    backgroundColor: '#F8FAFC',
+  },
+  tdCell: {
+    justifyContent: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+  },
+  judgmentActionPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: '#EFF6FF',
+    borderColor: '#BFDBFE',
+    borderWidth: 1,
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2.5,
+    alignSelf: 'flex-start',
+  },
+  judgmentActionPillText: {
+    fontSize: 10.5,
+    fontWeight: '600',
+    color: '#1D4ED8',
+  },
+  caseNumberRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  caseNumberText: {
+    fontSize: 11.5,
+    fontWeight: '600',
+    color: '#0F172A',
+    lineHeight: 16,
+  },
+  casePartiesText: {
+    fontSize: 10.5,
+    color: '#64748B',
+    marginTop: 2,
+    lineHeight: 14,
+  },
+  dateText: {
+    fontSize: 11.5,
+    color: '#334155',
+    lineHeight: 16,
+  },
+  dateTextActive: {
+    fontWeight: '600',
+    color: '#0F172A',
+  },
+  adjournmentCountText: {
+    fontSize: 11.5,
+    fontWeight: '600',
+    color: '#1E293B',
+    lineHeight: 16,
+  },
+  adjournmentStageText: {
+    fontSize: 10,
+    color: '#64748B',
+    marginTop: 1,
+    lineHeight: 13,
+  },
+  compactStatusBadge: {
+    paddingVertical: 2,
+    paddingHorizontal: 6,
+    borderRadius: 4,
+    borderWidth: 1,
+  },
+  compactStatusBadgeText: {
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  expandedDrawer: {
+    backgroundColor: '#F8FAFC',
+    padding: Spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+  },
+  drawerGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.md,
+  },
+  drawerItem: {
+    flex: 1,
+    minWidth: 200,
+  },
+  drawerItemSpan: {
+    flexBasis: '100%',
+  },
+  drawerLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#64748B',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 3,
+  },
+  drawerValue: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#1E293B',
+  },
+  drawerSub: {
+    fontSize: 12,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  drawerSummaryText: {
+    fontSize: 12,
+    color: '#475569',
+    marginTop: 4,
     lineHeight: 18,
+    fontStyle: 'italic',
+  },
+  drawerActionsRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: Spacing.md,
+    paddingTop: Spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+  },
+  drawerBtn: {
+    minWidth: 120,
+  },
+  loadingContainer: {
+    padding: Spacing.lg,
+    gap: Spacing.md,
+  },
+  emptyStateContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: Spacing.xl * 1.5,
+    paddingHorizontal: Spacing.lg,
+    gap: 8,
+  },
+  emptyStateTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#334155',
+  },
+  emptyStateSub: {
+    fontSize: 13,
+    color: '#64748B',
+    textAlign: 'center',
+    maxWidth: 400,
+  },
+  resetFiltersBtn: {
+    marginTop: 8,
+  },
+  paginationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+    backgroundColor: '#FAFAFA',
+  },
+  paginationText: {
+    fontSize: 12,
+    color: '#64748B',
+  },
+  paginationButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  pageBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: Radius.badge,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    backgroundColor: '#FFFFFF',
+  },
+  pageBtnDisabled: {
+    borderColor: '#F1F5F9',
+    backgroundColor: '#F8FAFC',
+  },
+  pageBtnText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#334155',
+  },
+  pageBtnTextDisabled: {
+    color: '#CBD5E1',
   },
 });

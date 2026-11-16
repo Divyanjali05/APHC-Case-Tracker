@@ -133,7 +133,6 @@ export default function ForgotPasswordScreen() {
                 render={({ field: { onChange, onBlur, value } }) => (
                   <Input
                     label={t('auth.enrollmentNumber', 'Bar Council Enrollment Number')}
-                    placeholder={t('auth.enrollmentPlaceholder', 'AP/1234/2020')}
                     value={value}
                     onChangeText={onChange}
                     onBlur={onBlur}

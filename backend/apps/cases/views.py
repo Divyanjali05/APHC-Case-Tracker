@@ -1,5 +1,8 @@
 import os
+import uuid
 
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.core.files.base import ContentFile
 from django.db.models import Q
 from django.http import FileResponse, HttpResponse
 from django.shortcuts import get_object_or_404
@@ -13,6 +16,7 @@ from apps.notifications.services import NotificationService
 from apps.reminders.services import ReminderService
 
 from .export_service import CaseCsvExportService, CasePdfExportService
+from .extractor import DocumentExtractionService, normalize_date_str
 from .history_service import CaseHistoryService
 from .models import Case, CaseDocument, CaseHistory, CaseNote, Hearing, Judgment
 from .query_normalizer import normalize_voice_query_py
@@ -28,6 +32,7 @@ from .serializers import (
     JudgmentSerializer,
 )
 from .services import DashboardService
+from .storage import secure_document_storage, validate_case_document_upload
 
 
 class CaseListCreateView(generics.ListCreateAPIView):
@@ -128,8 +133,8 @@ class CaseListCreateView(generics.ListCreateAPIView):
         CaseHistoryService.record_case_creation(case, changed_by=self.request.user)
 
 
-class CaseDetailView(generics.RetrieveUpdateAPIView):
-    """Retrieve or update case details, hearing history, and judgments."""
+class CaseDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """Retrieve, update, or remove case from advocate's active tracked docket."""
 
     serializer_class = CaseSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -157,6 +162,9 @@ class CaseDetailView(generics.RetrieveUpdateAPIView):
         CaseHistoryService.record_case_update(
             updated_case, old_data, new_data, changed_by=self.request.user
         )
+
+    def perform_destroy(self, instance):
+        instance.tracked_by.remove(self.request.user)
 
 
 class CaseJudgmentListCreateView(generics.ListCreateAPIView):
@@ -772,20 +780,310 @@ class CaseSummaryPdfExportView(APIView):
 
 
 class CaseListCsvExportView(APIView):
-    """Export filtered list of tracked cases as sanitized CSV with CWE-1236 mitigation."""
+    """Export filtered list of tracked cases as sanitized CSV with CWE-1236 mitigation and UTF-8 BOM."""
 
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = []
 
     def get(self, request):
+        user = request.user
+        if not user or not user.is_authenticated:
+            # Fallback to token query param for browser-initiated downloads
+            token = request.query_params.get("token")
+            if token:
+                try:
+                    from rest_framework_simplejwt.authentication import JWTAuthentication
+
+                    jwt_auth = JWTAuthentication()
+                    validated_token = jwt_auth.get_validated_token(token)
+                    user = jwt_auth.get_user(validated_token)
+                except Exception:
+                    user = None
+
+        if not user or not user.is_authenticated:
+            return Response(
+                {"detail": "Authentication credentials were not provided."},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
         list_view = CaseListCreateView()
         list_view.request = request
         list_view.format_kwarg = None
-        queryset = list_view.get_queryset()
+        queryset = Case.objects.filter(tracked_by=user).prefetch_related("hearings", "judgments")
+
+        search = request.query_params.get("search", "").strip()
+        if search:
+            from .query_normalizer import normalize_voice_query_py
+
+            norm_info = normalize_voice_query_py(search)
+            search_filter = (
+                Q(case_number__icontains=search)
+                | Q(petitioner__icontains=search)
+                | Q(respondent__icontains=search)
+                | Q(petitioner_advocate__icontains=search)
+                | Q(respondent_advocate__icontains=search)
+            )
+            if norm_info.get("normalized"):
+                search_filter |= Q(case_number__icontains=norm_info["normalized"])
+            if norm_info.get("case_type"):
+                search_filter |= Q(case_type__iexact=norm_info["case_type"])
+            if norm_info.get("case_number"):
+                search_filter |= Q(case_number__icontains=norm_info["case_number"])
+            if norm_info.get("filing_year"):
+                search_filter |= Q(filing_year=norm_info["filing_year"])
+            queryset = queryset.filter(search_filter)
+
+        status_param = request.query_params.get("status", "").strip().upper()
+        if status_param and status_param != "ALL":
+            queryset = queryset.filter(
+                Q(status__icontains=status_param) | Q(current_stage__icontains=status_param)
+            )
 
         csv_content = CaseCsvExportService.generate_case_list_csv(queryset)
-        timestamp = timezone.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"aphc_cases_export_{timestamp}.csv"
+        csv_bytes = ("\ufeff" + csv_content).encode("utf-8")
+        date_stamp = timezone.now().strftime("%Y-%m-%d")
+        filename = f"APHC_My_Cases_{date_stamp}.csv"
 
-        response = HttpResponse(csv_content, content_type="text/csv; charset=utf-8")
+        response = HttpResponse(csv_bytes, content_type="text/csv; charset=utf-8")
         response["Content-Disposition"] = f'attachment; filename="{filename}"'
         return response
+
+
+class CaseDocumentExtractView(APIView):
+    """Secure document parser for legal case filings and court records.
+
+    Validates uploaded documents against size and content inspection rules,
+    extracts legal fields, checks registry duplicates, and returns structured
+    candidate records for advocate review before registration.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        uploaded_file = request.FILES.get("file")
+        if not uploaded_file:
+            return Response(
+                {"error": "No file uploaded. Please select a valid legal document."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # 1. Content & format validation (MIME, magic bytes, size, anti-malware)
+        try:
+            detected_mime = validate_case_document_upload(uploaded_file)
+            uploaded_file.detected_mime_type = detected_mime
+        except DjangoValidationError as exc:
+            msg = exc.message if hasattr(exc, "message") else str(exc)
+            return Response({"error": msg}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 2. Extract content, metadata, and case information
+        extraction_result = DocumentExtractionService.extract_from_file(uploaded_file)
+
+        # 3. Duplicate detection for each identified case
+        for case_info in extraction_result.get("detected_cases", []):
+            dup_result = DocumentExtractionService.detect_duplicate(request.user, case_info)
+            case_info["duplicate_info"] = dup_result
+
+        # 4. Stage file in private secure storage
+        clean_name = os.path.basename(uploaded_file.name or "document")
+        token_name = f"staging_{uuid.uuid4().hex}_{clean_name}"
+        uploaded_file.seek(0)
+        file_bytes = uploaded_file.read()
+        uploaded_file.seek(0)
+
+        storage_path = secure_document_storage.save(
+            os.path.join("import_staging", token_name), ContentFile(file_bytes)
+        )
+
+        extraction_result["document_token"] = storage_path
+        extraction_result["file_info"] = {
+            "name": clean_name,
+            "size": uploaded_file.size,
+            "mime_type": detected_mime,
+            "token": storage_path,
+        }
+
+        return Response(extraction_result, status=status.HTTP_200_OK)
+
+
+class CaseImportConfirmView(APIView):
+    """Confirm and save an advocate-reviewed legal case record into workspace.
+
+    Supports:
+    - Registering new case
+    - Linking existing court registry case to advocate's workspace
+    - Attaching uploaded source document to CaseDocument
+    - Recording initial scheduled hearing and audit log
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        data = request.data
+        case_type = (data.get("case_type") or "WP").strip().upper()
+        case_number = str(data.get("case_number") or "").strip()
+        filing_year = data.get("filing_year")
+
+        if not case_number:
+            return Response(
+                {"error": "Case number is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not filing_year:
+            return Response(
+                {"error": "Filing year is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            filing_year = int(filing_year)
+            if filing_year < 1950 or filing_year > timezone.now().year + 1:
+                raise ValueError()
+        except ValueError:
+            return Response(
+                {"error": f"Invalid filing year '{filing_year}'."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        petitioner = (data.get("petitioner") or "").strip() or "N/A"
+        respondent = (data.get("respondent") or "").strip() or "N/A"
+        court_hall_number = data.get("court_hall_number")
+        if court_hall_number is not None and court_hall_number != "":
+            try:
+                court_hall_number = int(court_hall_number)
+            except (ValueError, TypeError):
+                court_hall_number = None
+        else:
+            court_hall_number = None
+
+        bench = (data.get("bench") or "").strip()
+        current_stage = (data.get("status") or "PENDING").strip().upper()
+        if current_stage not in ("PENDING", "DISPOSED", "ADJOURNED"):
+            current_stage = "PENDING"
+
+        next_hearing_date = normalize_date_str(data.get("next_hearing_date"))
+        document_token = data.get("document_token")
+
+        # Check existing case
+        existing_case = Case.objects.filter(
+            case_type__iexact=case_type,
+            case_number=case_number,
+            filing_year=filing_year,
+        ).first()
+
+        created = False
+        if existing_case:
+            case = existing_case
+            if request.user in case.tracked_by.all():
+                # Already tracked - update stage / next hearing if provided
+                if next_hearing_date and not case.next_hearing_date:
+                    case.next_hearing_date = next_hearing_date
+                    case.save(update_fields=["next_hearing_date", "updated_at"])
+            else:
+                case.tracked_by.add(request.user)
+                CaseHistoryService.record_event(
+                    case=case,
+                    event_type="CASE_TRACKED",
+                    description=f"Advocate {request.user.get_full_name() or request.user.username} imported case into workspace.",
+                    changed_by=request.user,
+                    source="IMPORT",
+                )
+        else:
+            case = Case.objects.create(
+                case_type=case_type,
+                case_number=case_number,
+                filing_year=filing_year,
+                petitioner=petitioner,
+                respondent=respondent,
+                court_hall_number=court_hall_number,
+                bench=bench,
+                current_stage=current_stage,
+                next_hearing_date=next_hearing_date,
+            )
+            case.tracked_by.add(request.user)
+            CaseHistoryService.record_case_creation(case, changed_by=request.user)
+            created = True
+
+            # If hearing date provided, record initial hearing
+            if next_hearing_date:
+                Hearing.objects.create(
+                    case=case,
+                    hearing_date=next_hearing_date,
+                    court_hall_number=court_hall_number,
+                    status="SCHEDULED",
+                    business_conducted="Initial hearing listing from document import.",
+                )
+
+            # If judgment date provided and disposed
+            judgment_date = normalize_date_str(data.get("judgment_date"))
+            if judgment_date and current_stage == "DISPOSED":
+                Judgment.objects.create(
+                    case=case,
+                    judgment_date=judgment_date,
+                    summary=data.get("judgment_summary") or "Disposed by court order.",
+                )
+
+        # Attach staged document if token exists
+        if document_token and secure_document_storage.exists(document_token):
+            try:
+                clean_filename = os.path.basename(document_token)
+                if "_" in clean_filename:
+                    # remove random token prefix
+                    clean_filename = clean_filename.split("_", 2)[-1]
+                with secure_document_storage.open(document_token, "rb") as f:
+                    file_content = f.read()
+
+                doc_type = data.get("document_type") or "OTHER"
+                if doc_type not in [c[0] for c in CaseDocument.CATEGORY_CHOICES]:
+                    doc_type = "OTHER"
+
+                mime_map = {
+                    "pdf": "application/pdf",
+                    "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    "doc": "application/msword",
+                    "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    "xls": "application/vnd.ms-excel",
+                    "csv": "text/csv",
+                    "txt": "text/plain",
+                    "jpg": "image/jpeg",
+                    "jpeg": "image/jpeg",
+                    "png": "image/png",
+                    "webp": "image/webp",
+                }
+                _, ext = os.path.splitext(clean_filename)
+                ext_clean = ext.lower().lstrip(".")
+                mime_type = mime_map.get(ext_clean, "application/octet-stream")
+
+                c_doc = CaseDocument(
+                    case=case,
+                    uploaded_by=request.user,
+                    title=data.get("document_title") or f"Imported: {clean_filename}",
+                    document_type=doc_type,
+                    description=f"Imported from {clean_filename} via file import workflow.",
+                    original_filename=clean_filename,
+                    file_size=len(file_content),
+                    mime_type=mime_type,
+                )
+                c_doc.file.save(clean_filename, ContentFile(file_content), save=True)
+
+                CaseHistoryService.record_event(
+                    case=case,
+                    event_type="DOCUMENT_UPDATED",
+                    description=f"Attached source document: {clean_filename}",
+                    changed_by=request.user,
+                    source="IMPORT",
+                )
+
+                # Clean up staging file
+                try:
+                    secure_document_storage.delete(document_token)
+                except Exception:
+                    pass
+            except Exception as exc:
+                import logging
+
+                logging.getLogger(__name__).warning(
+                    "Could not attach staged document %s: %s", document_token, exc
+                )
+
+        response_status = status.HTTP_201_CREATED if created else status.HTTP_200_OK
+        return Response(CaseSerializer(case).data, status=response_status)

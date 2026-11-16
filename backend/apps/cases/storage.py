@@ -53,7 +53,11 @@ MAGIC_SIGNATURES: dict[str, list[bytes]] = {
     "png": [b"\x89PNG\r\n\x1a\n"],
     "jpg": [b"\xff\xd8\xff"],
     "jpeg": [b"\xff\xd8\xff"],
+    "webp": [b"RIFF"],
     "docx": [b"PK\x03\x04"],  # ZIP container header for DOCX
+    "xlsx": [b"PK\x03\x04"],  # ZIP container header for XLSX
+    "doc": [b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"],  # OLE2 compound document header
+    "xls": [b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"],  # OLE2 compound document header
 }
 
 EXECUTABLE_SIGNATURES = [
@@ -61,6 +65,8 @@ EXECUTABLE_SIGNATURES = [
     b"\x7fELF",  # Linux ELF
     b"#!/bin",  # Shell script
     b"#!/usr",  # Shell script
+    b"<?php",  # PHP script
+    b"<script",  # Script tag
 ]
 
 
@@ -80,7 +86,9 @@ def validate_case_document_upload(uploaded_file: Any) -> str:
     _, ext = os.path.splitext(orig_name)
     ext_clean = ext.lower().lstrip(".")
     allowed_exts = getattr(
-        settings, "ALLOWED_DOCUMENT_EXTENSIONS", {"pdf", "docx", "jpg", "jpeg", "png"}
+        settings,
+        "ALLOWED_DOCUMENT_EXTENSIONS",
+        {"pdf", "doc", "docx", "xls", "xlsx", "csv", "txt", "jpg", "jpeg", "png", "webp"},
     )
 
     if ext_clean not in allowed_exts:
@@ -98,7 +106,12 @@ def validate_case_document_upload(uploaded_file: Any) -> str:
         if header.startswith(sig):
             raise ValidationError("Executable or script files are strictly prohibited.")
 
-    # Match magic bytes
+    # Additional check for WebP
+    if ext_clean == "webp":
+        if not (header.startswith(b"RIFF") and len(header) >= 12 and header[8:12] == b"WEBP"):
+            raise ValidationError("File content does not match the claimed file extension (.webp).")
+
+    # Match magic bytes for binary formats
     expected_signatures = MAGIC_SIGNATURES.get(ext_clean)
     if expected_signatures:
         matched = any(header.startswith(sig) for sig in expected_signatures)
@@ -107,18 +120,36 @@ def validate_case_document_upload(uploaded_file: Any) -> str:
                 f"File content does not match the claimed file extension (.{ext_clean})."
             )
 
+    # Validate text formats (txt, csv)
+    if ext_clean in ("txt", "csv"):
+        try:
+            header.decode("utf-8")
+        except UnicodeDecodeError:
+            try:
+                header.decode("latin-1")
+            except Exception as exc:
+                raise ValidationError(
+                    "Text file content could not be read or is corrupted."
+                ) from exc
+
     # Determine MIME type
-    mime_type, _ = mimetypes.guess_type(orig_name)
+    canonical_mime_map = {
+        "pdf": "application/pdf",
+        "doc": "application/msword",
+        "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "xls": "application/vnd.ms-excel",
+        "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "csv": "text/csv",
+        "txt": "text/plain",
+        "jpg": "image/jpeg",
+        "jpeg": "image/jpeg",
+        "png": "image/png",
+        "webp": "image/webp",
+    }
+    mime_type = canonical_mime_map.get(ext_clean)
     if not mime_type:
-        if ext_clean == "pdf":
-            mime_type = "application/pdf"
-        elif ext_clean == "docx":
-            mime_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        elif ext_clean in ("jpg", "jpeg"):
-            mime_type = "image/jpeg"
-        elif ext_clean == "png":
-            mime_type = "image/png"
-        else:
-            mime_type = "application/octet-stream"
+        mime_type, _ = mimetypes.guess_type(orig_name)
+    if not mime_type:
+        mime_type = "application/octet-stream"
 
     return mime_type

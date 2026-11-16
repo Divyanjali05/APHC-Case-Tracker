@@ -12,6 +12,8 @@ import {
   DashboardData,
   CaseDocumentItem,
   CaseNoteItem,
+  DocumentExtractionResponse,
+  ConfirmImportCasePayload,
 } from '../../types';
 
 export const DEMO_DASHBOARD_DATA: DashboardData & {
@@ -232,6 +234,56 @@ export const useCaseDetail = (id: number | string) => {
       }
     },
     enabled: !!id,
+  });
+};
+
+export interface UpdateCasePayload {
+  petitioner?: string;
+  respondent?: string;
+  petitioner_advocate?: string;
+  respondent_advocate?: string;
+  current_stage?: string;
+  bench?: string;
+  court_hall_number?: number | null;
+  next_hearing_date?: string | null;
+  status?: string | null;
+}
+
+export const useUpdateCase = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      id,
+      payload,
+    }: {
+      id: number | string;
+      payload: UpdateCasePayload;
+    }): Promise<CaseItem> => {
+      const response = await apiClient.patch<CaseItem>(
+        ENDPOINTS.CASES.DETAIL(id),
+        payload
+      );
+      return response.data;
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['cases'] });
+      queryClient.invalidateQueries({ queryKey: ['case', variables.id] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    },
+  });
+};
+
+export const useDeleteCase = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: number | string): Promise<void> => {
+      await apiClient.delete(ENDPOINTS.CASES.DETAIL(id));
+    },
+    onSuccess: (_, id) => {
+      queryClient.invalidateQueries({ queryKey: ['cases'] });
+      queryClient.invalidateQueries({ queryKey: ['case', id] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    },
   });
 };
 
@@ -530,6 +582,54 @@ export const useDeleteCaseNote = () => {
       queryClient.invalidateQueries({
         queryKey: ['case-notes', String(variables.caseId)],
       });
+    },
+  });
+};
+
+export const useExtractDocument = () => {
+  return useMutation({
+    mutationFn: async ({
+      formData,
+      onProgress,
+    }: {
+      formData: FormData;
+      onProgress?: (percent: number) => void;
+    }) => {
+      const response = await apiClient.post<DocumentExtractionResponse>(
+        ENDPOINTS.CASES.IMPORT_EXTRACT,
+        formData,
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+          onUploadProgress: progressEvent => {
+            if (progressEvent.total && onProgress) {
+              const percentCompleted = Math.round(
+                (progressEvent.loaded * 100) / progressEvent.total
+              );
+              onProgress(percentCompleted);
+            }
+          },
+        }
+      );
+      return response.data;
+    },
+  });
+};
+
+export const useConfirmImportCase = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: ConfirmImportCasePayload) => {
+      const response = await apiClient.post<CaseItem>(
+        ENDPOINTS.CASES.IMPORT_CONFIRM,
+        payload
+      );
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['cases'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     },
   });
 };

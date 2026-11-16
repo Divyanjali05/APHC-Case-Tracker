@@ -21,6 +21,8 @@ jest.mock('expo-router', () => ({
 
 jest.mock('../features/cases/hooks', () => ({
   useCases: jest.fn(),
+  useDeleteCase: () => ({ mutateAsync: jest.fn(), isPending: false }),
+  useUpdateCase: () => ({ mutateAsync: jest.fn(), isPending: false }),
   useDashboard: jest.fn().mockReturnValue({
     data: {
       summary: {

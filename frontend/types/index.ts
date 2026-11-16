@@ -835,3 +835,73 @@ export interface AdminDashboardResponse {
   recent_activity: AdminAuditLogItem[];
   system_overview: AdminSystemOverview;
 }
+
+export interface DuplicateCaseInfo {
+  is_duplicate: boolean;
+  duplicate_status: 'NEW' | 'EXISTS_IN_REGISTRY' | 'ALREADY_TRACKED';
+  message: string;
+  existing_case_id?: number | null;
+}
+
+export interface ExtractedCaseCandidate {
+  case_type: string;
+  case_number: string;
+  filing_year: number;
+  case_name: string;
+  petitioner: string;
+  respondent: string;
+  court: string;
+  court_hall_number?: number | null;
+  bench?: string;
+  started_date?: string | null;
+  next_hearing_date?: string | null;
+  adjournment_history?: string;
+  closed_date?: string | null;
+  status: 'PENDING' | 'DISPOSED' | 'ADJOURNED';
+  judgment_date?: string | null;
+  judgment_summary?: string;
+  duplicate_info?: DuplicateCaseInfo;
+}
+
+export interface DocumentExtractionResponse {
+  status: 'SUCCESS' | 'PARTIAL' | 'EMPTY' | 'UNSUPPORTED' | 'ERROR';
+  filename: string;
+  file_size: number;
+  file_type: string;
+  extracted_text: string;
+  raw_text_length: number;
+  tabular_rows_count: number;
+  metadata: Record<string, unknown>;
+  detected_cases: ExtractedCaseCandidate[];
+  document_token?: string;
+  file_info?: {
+    name: string;
+    size: number;
+    mime_type: string;
+    token: string;
+  };
+  ocr_info?: {
+    available: boolean;
+    used: boolean;
+    note: string;
+  };
+  error?: string;
+}
+
+export interface ConfirmImportCasePayload {
+  case_type: string;
+  case_number: string;
+  filing_year: number;
+  petitioner?: string;
+  respondent?: string;
+  court_hall_number?: number | null;
+  bench?: string;
+  status?: string;
+  started_date?: string | null;
+  next_hearing_date?: string | null;
+  judgment_date?: string | null;
+  judgment_summary?: string;
+  document_token?: string;
+  document_title?: string;
+  document_type?: string;
+}

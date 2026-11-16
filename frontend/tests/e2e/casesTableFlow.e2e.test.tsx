@@ -15,6 +15,14 @@ jest.mock('expo-router', () => ({
 
 jest.mock('../../features/cases/hooks', () => ({
   useCases: jest.fn(),
+  useDeleteCase: () => ({
+    mutateAsync: jest.fn().mockResolvedValue({ success: true }),
+    isLoading: false,
+  }),
+  useUpdateCase: () => ({
+    mutateAsync: jest.fn().mockResolvedValue({ success: true }),
+    isLoading: false,
+  }),
 }));
 
 const e2eMockCases: CaseItem[] = [

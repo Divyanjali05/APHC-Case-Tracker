@@ -36,39 +36,98 @@ class CaseCsvExportService:
         headers = [
             "Case Number",
             "Case Type",
-            "Filing Year",
+            "Case Name",
             "Petitioner",
             "Respondent",
-            "Petitioner Advocate",
-            "Respondent Advocate",
+            "Court",
             "Court Hall",
-            "Bench",
-            "Current Stage",
-            "Status",
+            "Started/Filing Date",
             "Next Hearing Date",
+            "Hearing History",
+            "Adjournment History",
+            "Closed Date",
+            "Current Status",
+            "Judgment Date",
+            "Judgment Status",
+            "Judgment Summary",
             "Last Updated",
         ]
         writer.writerow(headers)
 
         for case in cases_queryset.prefetch_related("hearings", "judgments"):
-            status_text = getattr(case, "status", None) or case.current_stage
-            hall_text = f"Hall {case.court_hall_number}" if case.court_hall_number else "—"
+            case_number = f"{case.case_type} {case.case_number}/{case.filing_year}"
+            case_name = f"{case.petitioner} vs {case.respondent}"
+            court = case.bench or "High Court of Andhra Pradesh"
+            hall_text = f"Court Hall {case.court_hall_number}" if case.court_hall_number else "—"
+            filing_date = (
+                case.created_at.strftime("%Y-%m-%d") if case.created_at else str(case.filing_year)
+            )
             next_date = case.next_hearing_date.isoformat() if case.next_hearing_date else "—"
+
+            hearings = list(case.hearings.all()) if hasattr(case, "hearings") else []
+            hearing_history = (
+                f"{len(hearings)} hearing(s) listed" if hearings else "No hearings listed"
+            )
+            adjournments = [
+                h
+                for h in hearings
+                if "adjourn" in (getattr(h, "business_conducted", "") or "").lower()
+                or "adjourn" in (getattr(h, "status", "") or "").lower()
+            ]
+            adjournment_history = (
+                f"{len(adjournments)} adjournment(s)" if adjournments else "0 adjournments"
+            )
+
+            judgments = list(case.judgments.all()) if hasattr(case, "judgments") else []
+            latest_judgment = judgments[0] if judgments else None
+            status_text = getattr(case, "status", None) or case.current_stage or "PENDING"
+            is_closed = (
+                "DISPOSED" in status_text.upper()
+                or "CLOSED" in status_text.upper()
+                or bool(getattr(case, "judgment_date", None))
+                or bool(latest_judgment)
+            )
+
+            judgment_date_val = getattr(case, "judgment_date", None)
+            if not judgment_date_val and latest_judgment and latest_judgment.judgment_date:
+                judgment_date_val = latest_judgment.judgment_date
+
+            judgment_date_str = judgment_date_val.isoformat() if judgment_date_val else "—"
+            closed_date_str = (
+                judgment_date_str
+                if is_closed and judgment_date_str != "—"
+                else ("Disposed" if is_closed else "—")
+            )
+
+            if latest_judgment or judgment_date_val:
+                judgment_status = "Judgment Available"
+            elif is_closed:
+                judgment_status = "Pending"
+            else:
+                judgment_status = "Not Scheduled"
+
+            judgment_summary = (
+                latest_judgment.summary if (latest_judgment and latest_judgment.summary) else "—"
+            )
             updated_str = case.updated_at.strftime("%Y-%m-%d %H:%M") if case.updated_at else "—"
 
             row = [
-                sanitize_csv_cell(f"{case.case_type} {case.case_number}/{case.filing_year}"),
+                sanitize_csv_cell(case_number),
                 sanitize_csv_cell(case.case_type),
-                sanitize_csv_cell(case.filing_year),
+                sanitize_csv_cell(case_name),
                 sanitize_csv_cell(case.petitioner),
                 sanitize_csv_cell(case.respondent),
-                sanitize_csv_cell(case.petitioner_advocate or "—"),
-                sanitize_csv_cell(case.respondent_advocate or "—"),
+                sanitize_csv_cell(court),
                 sanitize_csv_cell(hall_text),
-                sanitize_csv_cell(case.bench or "—"),
-                sanitize_csv_cell(case.current_stage),
-                sanitize_csv_cell(status_text),
+                sanitize_csv_cell(filing_date),
                 sanitize_csv_cell(next_date),
+                sanitize_csv_cell(hearing_history),
+                sanitize_csv_cell(adjournment_history),
+                sanitize_csv_cell(closed_date_str),
+                sanitize_csv_cell(status_text),
+                sanitize_csv_cell(judgment_date_str),
+                sanitize_csv_cell(judgment_status),
+                sanitize_csv_cell(judgment_summary),
                 sanitize_csv_cell(updated_str),
             ]
             writer.writerow(row)
