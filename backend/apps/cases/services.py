@@ -6,12 +6,19 @@ from django.utils import timezone
 
 
 class CaseStatusService:
-    """Service to compute derived court status, next hearing dates, and judgment metadata."""
+    """Service to compute derived court status, canonical lifecycle buckets, and judgment metadata."""
 
     STATUS_ADJOURNED = "Adjourned"
+    STATUS_DISPOSED = "Disposed"
     STATUS_JUDGMENT_AVAILABLE = "Judgment Available"
     STATUS_UPCOMING = "Upcoming"
     STATUS_PENDING = "Pending Hearing"
+
+    CANONICAL_PENDING = "PENDING"
+    CANONICAL_DISPOSED = "DISPOSED"
+    CANONICAL_ADJOURNED = "ADJOURNED"
+
+    DISPOSED_STAGES = ("DISPOSED", "CLOSED", "COMPLETED", "DECIDED")
 
     ADJOURNMENT_KEYWORDS = (
         "adjourn",
@@ -23,6 +30,27 @@ class CaseStatusService:
         "re-notified",
         "call on",
     )
+
+    @classmethod
+    def disposed_q(cls) -> Q:
+        """Canonical queryset filter for DISPOSED cases (disposed stage OR judgment attached)."""
+        stage_q = Q()
+        for stage in cls.DISPOSED_STAGES:
+            stage_q |= Q(current_stage__iexact=stage)
+        return stage_q | Q(judgments__isnull=False)
+
+    @classmethod
+    def adjourned_q(cls) -> Q:
+        """Canonical queryset filter for active ADJOURNED cases (strictly non-disposed)."""
+        return ~cls.disposed_q() & (
+            Q(current_stage__iexact="ADJOURNED")
+            | Q(hearings__business_conducted__icontains="adjourn")
+        )
+
+    @classmethod
+    def pending_q(cls) -> Q:
+        """Canonical queryset filter for active PENDING cases (non-disposed and non-adjourned)."""
+        return ~cls.disposed_q() & ~cls.adjourned_q()
 
     @classmethod
     def get_latest_judgment(cls, case):
@@ -41,24 +69,23 @@ class CaseStatusService:
     @classmethod
     def calculate_status(cls, case) -> dict[str, Any]:
         """
-        Derive case status, effective next hearing date, and judgment info.
+        Derive display status, canonical bucket ('PENDING' | 'DISPOSED' | 'ADJOURNED'),
+        effective next hearing date, and judgment metadata.
 
-        Returns dict with:
-          - status: str ('Judgment Available', 'Adjourned', 'Upcoming', 'Pending Hearing')
-          - next_hearing_date: Optional[date]
-          - judgment_date: Optional[date]
-          - has_judgment: bool
-          - has_hearings: bool
-          - judgment_id: Optional[int]
+        Canonical buckets are mutually exclusive and exhaustive:
+          Total = Pending + Disposed + Adjourned
         """
         today = timezone.localdate() if hasattr(timezone, "localdate") else date.today()
+        stage_upper = (case.current_stage or "").strip().upper()
         latest_judgment = cls.get_latest_judgment(case)
         latest_hearing = cls.get_latest_hearing(case)
 
-        # Scenario B - Judgment entered
+        # 1A. Disposed with certified judgment
         if latest_judgment is not None:
             return {
                 "status": cls.STATUS_JUDGMENT_AVAILABLE,
+                "canonical_status": cls.CANONICAL_DISPOSED,
+                "is_disposed": True,
                 "next_hearing_date": None,
                 "judgment_date": latest_judgment.judgment_date,
                 "has_judgment": True,
@@ -66,24 +93,40 @@ class CaseStatusService:
                 "judgment_id": latest_judgment.id,
             }
 
-        # Scenario A - Adjourned: latest hearing indicates an adjournment
-        if latest_hearing is not None:
-            business = (latest_hearing.business_conducted or "").lower()
-            is_adjourned_text = any(keyword in business for keyword in cls.ADJOURNMENT_KEYWORDS)
-            stage_is_adjourned = (case.current_stage or "").upper() == "ADJOURNED"
+        # 1B. Disposed / Closed without judgment uploaded yet
+        if stage_upper in cls.DISPOSED_STAGES:
+            return {
+                "status": cls.STATUS_DISPOSED,
+                "canonical_status": cls.CANONICAL_DISPOSED,
+                "is_disposed": True,
+                "next_hearing_date": None,
+                "judgment_date": None,
+                "has_judgment": False,
+                "has_hearings": latest_hearing is not None,
+                "judgment_id": None,
+            }
 
-            if is_adjourned_text or stage_is_adjourned:
-                effective_next_date = latest_hearing.next_date or case.next_hearing_date
-                return {
-                    "status": cls.STATUS_ADJOURNED,
-                    "next_hearing_date": effective_next_date,
-                    "judgment_date": None,
-                    "has_judgment": False,
-                    "has_hearings": True,
-                    "judgment_id": None,
-                }
+        # 2. Adjourned (explicit stage or latest hearing proceedings indicate adjournment)
+        business = (latest_hearing.business_conducted or "").lower() if latest_hearing else ""
+        is_adjourned_text = any(keyword in business for keyword in cls.ADJOURNMENT_KEYWORDS)
+        stage_is_adjourned = stage_upper == "ADJOURNED"
 
-        # Scenario C - Upcoming hearing
+        if stage_is_adjourned or is_adjourned_text:
+            effective_next_date = (
+                latest_hearing.next_date if latest_hearing else None
+            ) or case.next_hearing_date
+            return {
+                "status": cls.STATUS_ADJOURNED,
+                "canonical_status": cls.CANONICAL_ADJOURNED,
+                "is_disposed": False,
+                "next_hearing_date": effective_next_date,
+                "judgment_date": None,
+                "has_judgment": False,
+                "has_hearings": latest_hearing is not None,
+                "judgment_id": None,
+            }
+
+        # 3A. Pending with upcoming hearing scheduled
         candidate_upcoming_date = None
         if case.next_hearing_date and case.next_hearing_date >= today:
             candidate_upcoming_date = case.next_hearing_date
@@ -93,7 +136,7 @@ class CaseStatusService:
             latest_hearing and latest_hearing.hearing_date and latest_hearing.hearing_date >= today
         ):
             candidate_upcoming_date = latest_hearing.hearing_date
-        elif (case.current_stage or "").upper() in (
+        elif stage_upper in (
             "UPCOMING",
             "LISTED",
             "FOR ADMISSION",
@@ -101,12 +144,14 @@ class CaseStatusService:
         ):
             candidate_upcoming_date = case.next_hearing_date
 
-        if candidate_upcoming_date is not None or (case.current_stage or "").upper() in (
+        if candidate_upcoming_date is not None or stage_upper in (
             "UPCOMING",
             "LISTED",
         ):
             return {
                 "status": cls.STATUS_UPCOMING,
+                "canonical_status": cls.CANONICAL_PENDING,
+                "is_disposed": False,
                 "next_hearing_date": candidate_upcoming_date or case.next_hearing_date,
                 "judgment_date": None,
                 "has_judgment": False,
@@ -114,9 +159,11 @@ class CaseStatusService:
                 "judgment_id": None,
             }
 
-        # Scenario D - No judgment or hearing information
+        # 3B. Pending without upcoming hearing scheduled
         return {
             "status": cls.STATUS_PENDING,
+            "canonical_status": cls.CANONICAL_PENDING,
+            "is_disposed": False,
             "next_hearing_date": case.next_hearing_date
             or (latest_hearing.next_date if latest_hearing else None),
             "judgment_date": None,
@@ -138,32 +185,14 @@ class DashboardService:
 
         today = timezone.localdate() if hasattr(timezone, "localdate") else timezone.now().date()
 
-        # 1. Summary Statistics - Strictly isolated to user's tracked cases
+        # 1. Summary Statistics - Strictly isolated to user's tracked cases and aligned with
+        #    CaseStatusService's mutually exclusive canonical buckets:
+        #    Total = Pending + Disposed + Adjourned
         user_cases = Case.objects.filter(tracked_by=user)
         total_cases = user_cases.count()
-
-        # Disposed cases: current_stage in completed stages OR has judgment attached
-        disposed_cases = (
-            user_cases.filter(
-                Q(current_stage__in=["DISPOSED", "CLOSED", "COMPLETED", "DECIDED"])
-                | Q(judgments__isnull=False)
-            )
-            .distinct()
-            .count()
-        )
-
-        # Adjourned cases: current_stage is ADJOURNED or recent hearing proceedings indicate adjournment
-        adjourned_cases = (
-            user_cases.filter(
-                Q(current_stage__iexact="ADJOURNED")
-                | Q(hearings__business_conducted__icontains="adjourn")
-            )
-            .distinct()
-            .count()
-        )
-
-        # Pending cases: active non-disposed matters
-        pending_cases = max(0, total_cases - disposed_cases)
+        disposed_cases = user_cases.filter(CaseStatusService.disposed_q()).distinct().count()
+        adjourned_cases = user_cases.filter(CaseStatusService.adjourned_q()).distinct().count()
+        pending_cases = user_cases.filter(CaseStatusService.pending_q()).distinct().count()
 
         # 2. Today's Hearings
         today_hearings_qs = (

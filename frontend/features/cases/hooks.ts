@@ -132,40 +132,100 @@ export const DEMO_CASES_DATA: CaseItem[] = [
   },
 ];
 
-export const useCases = (options?: { enabled?: boolean }) => {
+export const useCases = (options?: { enabled?: boolean; search?: string }) => {
+  const normalizedSearch = (options?.search || '').trim();
+
   return useQuery({
-    queryKey: ['cases'],
+    queryKey: normalizedSearch ? ['cases', { search: normalizedSearch }] : ['cases'],
     queryFn: async (): Promise<CaseItem[]> => {
       const isDemo = await tokenStorage.isDemoMode();
       if (isDemo) {
-        return DEMO_CASES_DATA;
+        if (!normalizedSearch) return DEMO_CASES_DATA;
+        const q = normalizedSearch.toLowerCase();
+        return DEMO_CASES_DATA.filter(item =>
+          `${item.case_type || ''} ${item.case_number || ''} ${item.filing_year || ''} ${
+            item.petitioner || ''
+          } ${item.respondent || ''}`
+            .toLowerCase()
+            .includes(q)
+        );
       }
 
       const enrollment = await tokenStorage.getUserEnrollment();
       try {
-        const response = await apiClient.get<CaseItem[] | { results: CaseItem[] }>(
-          ENDPOINTS.CASES.LIST
-        );
-        const raw = response.data;
-        const data = Array.isArray(raw)
-          ? raw
-          : Array.isArray((raw as { results?: CaseItem[] })?.results)
-            ? (raw as { results: CaseItem[] }).results
-            : [];
-        await offlineStorage.saveCachedCases(enrollment, data);
-        await offlineStorage.saveSyncMetadata(enrollment, {
-          lastSyncedAt: new Date().toISOString(),
-          status: 'ONLINE',
-        });
-        return data;
+        interface PaginatedCaseResponse {
+          count?: number;
+          next?: string | null;
+          results?: CaseItem[];
+        }
+
+        const aggregated: CaseItem[] = [];
+        const seenIds = new Set<number>();
+        const MAX_PAGES = 20;
+        let page = 1;
+
+        while (page <= MAX_PAGES) {
+          const params: Record<string, string | number> = {
+            page_size: 100,
+            ...(page > 1 ? { page } : {}),
+            ...(normalizedSearch ? { search: normalizedSearch } : {}),
+          };
+
+          const response = await apiClient.get<CaseItem[] | PaginatedCaseResponse>(
+            ENDPOINTS.CASES.LIST,
+            { params }
+          );
+          const raw = response.data;
+
+          if (Array.isArray(raw)) {
+            raw.forEach(item => {
+              if (!seenIds.has(item.id)) {
+                seenIds.add(item.id);
+                aggregated.push(item);
+              }
+            });
+            break;
+          }
+
+          const pageResults = Array.isArray(raw?.results) ? raw.results : [];
+          pageResults.forEach(item => {
+            if (!seenIds.has(item.id)) {
+              seenIds.add(item.id);
+              aggregated.push(item);
+            }
+          });
+
+          if (!raw?.next || pageResults.length === 0) {
+            break;
+          }
+          page += 1;
+        }
+
+        if (!normalizedSearch) {
+          await offlineStorage.saveCachedCases(enrollment, aggregated);
+          await offlineStorage.saveSyncMetadata(enrollment, {
+            lastSyncedAt: new Date().toISOString(),
+            status: 'ONLINE',
+          });
+        }
+        return aggregated;
       } catch (err) {
         const cached = await offlineStorage.getCachedCases(enrollment);
         if (cached && cached.data) {
-          return cached.data;
+          if (!normalizedSearch) return cached.data;
+          const q = normalizedSearch.toLowerCase();
+          return cached.data.filter(item =>
+            `${item.case_type || ''} ${item.case_number || ''} ${
+              item.filing_year || ''
+            } ${item.petitioner || ''} ${item.respondent || ''}`
+              .toLowerCase()
+              .includes(q)
+          );
         }
         throw err;
       }
     },
+    placeholderData: previousData => previousData,
     enabled: options?.enabled,
   });
 };

@@ -1,0 +1,11 @@
+[TEST DATA] APHC Case Tracker - Synthetic Import Sample (TXT)
+NOT A GENUINE COURT RECORD - FOR LOCAL STAGING TESTING ONLY
+
+Case Number: WP 92001/2026
+Petitioner: Synthetic Alpha Petitioner TXT
+Respondent: Synthetic Municipal Board TXT
+Petitioner Advocate: Test Advocate Alpha
+Court Hall: 4
+Bench: High Court of Andhra Pradesh - Writ Bench III
+Stage: PENDING
+Next Hearing Date: 2026-12-02

@@ -24,6 +24,8 @@ export interface CaseItem {
   status?: string;
   status_details?: {
     status: string;
+    canonical_status?: 'PENDING' | 'DISPOSED' | 'ADJOURNED';
+    is_disposed?: boolean;
     next_hearing_date?: string | null;
     judgment_date?: string | null;
     has_judgment: boolean;
@@ -588,8 +590,10 @@ export interface AgendaTokenItem {
   hearing_date: string;
   status: string;
   current_called_token?: string;
+  last_observed_token?: string;
   items_remaining?: number | null;
   last_synced_at?: string | null;
+  last_observed_at?: string | null;
   case_id?: number | null;
 }
 

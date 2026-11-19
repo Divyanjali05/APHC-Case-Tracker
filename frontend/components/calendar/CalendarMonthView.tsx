@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React from 'react';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { Colors } from '../../constants/colors';
 import { Badge } from '../common/Badge';
@@ -9,7 +9,14 @@ import {
   AgendaHearingItem,
   AgendaReminderItem,
   AgendaResponse,
+  AgendaTokenItem,
 } from '../../types';
+import {
+  formatDisplayTime,
+  formatLongDate,
+  isLocalToday,
+  parseLocalDate,
+} from '../../utils/calendarDate';
 
 export interface CalendarMonthViewProps {
   agenda: AgendaResponse;
@@ -25,23 +32,21 @@ export const CalendarMonthView: React.FC<CalendarMonthViewProps> = ({
   onSelectEvent,
 }) => {
   const { t } = useTranslation();
-  const [activeDate, setActiveDate] = useState<string>(selectedDate);
 
-  const baseDate = new Date(selectedDate);
+  // Always parse in local timezone and stay strictly synced with selectedDate prop
+  const baseDate = parseLocalDate(selectedDate);
   const year = baseDate.getFullYear();
   const month = baseDate.getMonth();
 
-  // 1st day of month & days count
   const firstDay = new Date(year, month, 1);
   const lastDay = new Date(year, month + 1, 0);
   const daysInMonth = lastDay.getDate();
 
-  // Day of week offset for Monday (0) to Sunday (6)
-  // JS getDay(): Sunday is 0, Monday is 1, Saturday is 6
+  // Monday (0) to Sunday (6)
   const startDayOfWeek = (firstDay.getDay() + 6) % 7;
 
   const eventsByDate = agenda.events_by_date || {};
-  const currentDayEvents: AgendaEventUnion[] = eventsByDate[activeDate] || [];
+  const currentDayEvents: AgendaEventUnion[] = eventsByDate[selectedDate] || [];
 
   const dayHeaders = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
@@ -54,10 +59,9 @@ export const CalendarMonthView: React.FC<CalendarMonthViewProps> = ({
   }
 
   return (
-    <ScrollView style={styles.container} testID="calendar-month-view">
+    <View style={styles.container} testID="calendar-month-view">
       {/* Month Grid Card */}
       <Card style={styles.gridCard}>
-        {/* Day of Week Header */}
         <View style={styles.headerRow}>
           {dayHeaders.map((dh, idx) => (
             <View key={idx} style={styles.headerCell}>
@@ -66,7 +70,6 @@ export const CalendarMonthView: React.FC<CalendarMonthViewProps> = ({
           ))}
         </View>
 
-        {/* Calendar Cells */}
         <View style={styles.grid}>
           {cells.map((dayNum, idx) => {
             if (dayNum === null) {
@@ -76,20 +79,30 @@ export const CalendarMonthView: React.FC<CalendarMonthViewProps> = ({
             const monthStr = String(month + 1).padStart(2, '0');
             const dayStr = String(dayNum).padStart(2, '0');
             const dateStr = `${year}-${monthStr}-${dayStr}`;
-            const isSelected = dateStr === activeDate;
+            const isSelected = dateStr === selectedDate;
+            const cellIsToday = isLocalToday(dateStr);
             const eventCount = (eventsByDate[dateStr] || []).length;
 
             return (
               <TouchableOpacity
                 key={dateStr}
                 testID={`month-day-${dateStr}`}
-                style={[styles.cell, isSelected && styles.cellActive]}
-                onPress={() => {
-                  setActiveDate(dateStr);
-                  onSelectDate(dateStr);
-                }}
+                style={[
+                  styles.cell,
+                  cellIsToday && !isSelected && styles.cellToday,
+                  isSelected && styles.cellActive,
+                ]}
+                onPress={() => onSelectDate(dateStr)}
+                accessibilityRole="button"
+                accessibilityState={{ selected: isSelected }}
               >
-                <Text style={[styles.dayNumText, isSelected && styles.dayNumTextActive]}>
+                <Text
+                  style={[
+                    styles.dayNumText,
+                    cellIsToday && !isSelected && styles.dayNumTextToday,
+                    isSelected && styles.dayNumTextActive,
+                  ]}
+                >
                   {dayNum}
                 </Text>
                 {eventCount > 0 ? (
@@ -106,8 +119,8 @@ export const CalendarMonthView: React.FC<CalendarMonthViewProps> = ({
       {/* Selected Day Agenda Listing */}
       <View style={styles.agendaSection}>
         <Text style={styles.sectionTitle}>
-          {t('calendar.agenda_for', 'Agenda for')} {activeDate} ({currentDayEvents.length}
-          )
+          {t('calendar.agenda_for', 'Agenda for')} {formatLongDate(selectedDate)} (
+          {currentDayEvents.length})
         </Text>
 
         {currentDayEvents.length === 0 ? (
@@ -129,7 +142,7 @@ export const CalendarMonthView: React.FC<CalendarMonthViewProps> = ({
                 key={`${ev.event_type}-${ev.id}-${index}`}
                 testID={`month-event-${ev.event_type.toLowerCase()}-${ev.id}`}
                 onPress={() => onSelectEvent(ev)}
-                activeOpacity={0.7}
+                activeOpacity={0.75}
               >
                 <Card style={styles.eventCard}>
                   <View style={styles.cardHeader}>
@@ -140,19 +153,27 @@ export const CalendarMonthView: React.FC<CalendarMonthViewProps> = ({
                     />
                   </View>
 
-                  {isHearing && (ev as AgendaHearingItem).court_hall_number ? (
+                  {isHearing && (
                     <Text style={styles.detailText}>
-                      Hall {(ev as AgendaHearingItem).court_hall_number} •{' '}
-                      {(ev as AgendaHearingItem).hearing_time || 'All Day'}
+                      Hall {(ev as AgendaHearingItem).court_hall_number || '—'} •{' '}
+                      {formatDisplayTime((ev as AgendaHearingItem).hearing_time)}
                     </Text>
-                  ) : null}
+                  )}
+
+                  {isToken && (
+                    <Text style={styles.detailText}>
+                      Hall {(ev as AgendaTokenItem).court_hall_number} •{' '}
+                      {(ev as AgendaTokenItem).status}
+                    </Text>
+                  )}
 
                   {!isHearing && !isToken && (ev as AgendaReminderItem).due_date ? (
                     <Text style={styles.detailText}>
                       Due:{' '}
-                      {(ev as AgendaReminderItem).due_date
-                        .replace('T', ' ')
-                        .substring(0, 16)}
+                      {formatDisplayTime(
+                        (ev as AgendaReminderItem).time ||
+                          (ev as AgendaReminderItem).due_date
+                      )}
                     </Text>
                   ) : null}
                 </Card>
@@ -161,7 +182,7 @@ export const CalendarMonthView: React.FC<CalendarMonthViewProps> = ({
           })
         )}
       </View>
-    </ScrollView>
+    </View>
   );
 };
 
@@ -204,6 +225,11 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     padding: 2,
   },
+  cellToday: {
+    backgroundColor: Colors.surfaceBlue,
+    borderWidth: 1,
+    borderColor: Colors.primary,
+  },
   cellActive: {
     backgroundColor: Colors.primary,
   },
@@ -211,6 +237,10 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: Colors.text.primary,
+  },
+  dayNumTextToday: {
+    color: Colors.primary,
+    fontWeight: '700',
   },
   dayNumTextActive: {
     color: Colors.text.white,
@@ -231,11 +261,12 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   sectionTitle: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '700',
     color: Colors.text.secondary,
     marginBottom: 12,
     textTransform: 'uppercase',
+    letterSpacing: 0.4,
   },
   eventCard: {
     marginBottom: 10,
@@ -262,11 +293,12 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   emptyContainer: {
-    paddingVertical: 32,
+    paddingVertical: 28,
     alignItems: 'center',
   },
   emptyText: {
     color: Colors.text.muted,
-    fontSize: 14,
+    fontSize: 13,
+    textAlign: 'center',
   },
 });

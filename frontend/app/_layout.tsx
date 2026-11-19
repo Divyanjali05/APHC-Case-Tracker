@@ -16,15 +16,12 @@ LogBox.ignoreAllLogs();
 function RootLayoutNav() {
   const router = useRouter();
   const segments = useSegments();
-  const { isLoading, isAuthenticated, isDemo, role } = useAuth();
+  const { isLoading, isLoggingOut, isAuthenticated, isDemo, role } = useAuth();
 
   useEffect(() => {
     const unsubscribe = authService.onSessionExpired(() => {
       queryClient.cancelQueries();
-      setTimeout(() => {
-        queryClient.cancelQueries();
-        queryClient.clear();
-      }, 0);
+      queryClient.clear();
     });
     return () => {
       unsubscribe();
@@ -32,7 +29,7 @@ function RootLayoutNav() {
   }, []);
 
   useEffect(() => {
-    if (isLoading) return;
+    if (isLoading || isLoggingOut) return;
 
     const topSegment = segments[0] as string | undefined;
     const inAuthGroup = topSegment === '(auth)';
@@ -42,7 +39,7 @@ function RootLayoutNav() {
 
     if (!isAuthenticated && !isDemo) {
       if (inTabsGroup || inAdminGroup || inCasesDetail) {
-        router.replace('/');
+        router.replace('/(auth)/login');
       }
       return;
     }
@@ -61,7 +58,7 @@ function RootLayoutNav() {
         router.replace(role === 'ADMIN' ? '/admin' : '/(tabs)');
       }
     }
-  }, [isLoading, isAuthenticated, isDemo, role, segments, router]);
+  }, [isLoading, isLoggingOut, isAuthenticated, isDemo, role, segments, router]);
 
   return (
     <Stack

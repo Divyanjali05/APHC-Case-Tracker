@@ -1,5 +1,5 @@
-import React from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useMemo } from 'react';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { Colors } from '../../constants/colors';
 import { AppIcon } from '../common/AppIcon';
@@ -12,23 +12,39 @@ import {
   AgendaResponse,
   AgendaTokenItem,
 } from '../../types';
+import { deriveAgendaRecords } from './AgendaSummaryPanel';
+import { formatDisplayTime, formatLongDate } from '../../utils/calendarDate';
 
 export interface CalendarDayViewProps {
   agenda: AgendaResponse;
+  selectedDate?: string;
   onSelectEvent: (event: AgendaEventUnion) => void;
+  onOpenCase?: (caseId: number) => void;
+  onOpenTokens?: () => void;
   onToggleCompleteReminder?: (reminder: AgendaReminderItem) => void;
 }
 
 export const CalendarDayView: React.FC<CalendarDayViewProps> = ({
   agenda,
+  selectedDate,
   onSelectEvent,
+  onOpenCase,
+  onOpenTokens,
   onToggleCompleteReminder,
 }) => {
   const { t } = useTranslation();
-  const hearings = agenda.today_hearings || [];
-  const reminders = agenda.reminders || [];
-  const compliance = agenda.compliance_deadlines || [];
-  const tokens = agenda.token_events || [];
+  const effectiveDate = selectedDate || agenda.selected_date;
+
+  const {
+    hearings,
+    deadlines: compliance,
+    reminders,
+    tokens,
+    caseNumberById,
+  } = useMemo(
+    () => deriveAgendaRecords(agenda, 'day', effectiveDate),
+    [agenda, effectiveDate]
+  );
 
   const hasEvents =
     hearings.length > 0 ||
@@ -37,40 +53,14 @@ export const CalendarDayView: React.FC<CalendarDayViewProps> = ({
     tokens.length > 0;
 
   return (
-    <ScrollView style={styles.container} testID="calendar-day-view">
-      {/* Summary Stat Badges */}
-      <View style={styles.summaryRow}>
-        <View style={styles.statBox}>
-          <Text style={styles.statNumber}>{hearings.length}</Text>
-          <Text style={styles.statLabel}>{t('calendar.hearings', 'Hearings')}</Text>
-        </View>
-        <View style={styles.statBox}>
-          <Text style={[styles.statNumber, { color: Colors.warning }]}>
-            {compliance.length}
-          </Text>
-          <Text style={styles.statLabel}>{t('calendar.deadlines', 'Deadlines')}</Text>
-        </View>
-        <View style={styles.statBox}>
-          <Text style={[styles.statNumber, { color: Colors.gold }]}>
-            {reminders.length}
-          </Text>
-          <Text style={styles.statLabel}>{t('calendar.reminders', 'Reminders')}</Text>
-        </View>
-        <View style={styles.statBox}>
-          <Text style={[styles.statNumber, { color: Colors.success }]}>
-            {tokens.length}
-          </Text>
-          <Text style={styles.statLabel}>{t('calendar.tokens', 'Tokens')}</Text>
-        </View>
-      </View>
-
+    <View style={styles.container} testID="calendar-day-view">
       {!hasEvents ? (
         <View style={styles.emptyContainer} testID="day-view-empty">
           <View style={styles.emptyIconCircle}>
             <AppIcon name="calendar" size={28} color={Colors.primary} />
           </View>
           <Text style={styles.emptyTitle}>
-            {t('calendar.no_events_today', 'No events scheduled for this day')}
+            No events scheduled for {formatLongDate(effectiveDate)}
           </Text>
           <Text style={styles.emptySubtitle}>
             {t(
@@ -94,15 +84,23 @@ export const CalendarDayView: React.FC<CalendarDayViewProps> = ({
                 <TouchableOpacity
                   key={`h-${h.id}`}
                   testID={`hearing-card-${h.id}`}
-                  onPress={() => onSelectEvent(h)}
-                  activeOpacity={0.7}
+                  onPress={() =>
+                    h.case_id && onOpenCase ? onOpenCase(h.case_id) : onSelectEvent(h)
+                  }
+                  activeOpacity={0.75}
                 >
                   <Card style={styles.eventCard}>
                     <View style={styles.cardHeader}>
                       <Text style={styles.cardTitle}>{h.case_number}</Text>
                       <Badge
                         label={h.status}
-                        variant={h.status === 'COMPLETED' ? 'success' : 'primary'}
+                        variant={
+                          h.status === 'COMPLETED'
+                            ? 'success'
+                            : h.status === 'RESCHEDULED'
+                              ? 'warning'
+                              : 'primary'
+                        }
                       />
                     </View>
 
@@ -122,7 +120,7 @@ export const CalendarDayView: React.FC<CalendarDayViewProps> = ({
                       <View style={styles.iconTextRow}>
                         <AppIcon name="clock" size={12} color={Colors.primaryLight} />
                         <Text style={styles.timeText}>
-                          {h.hearing_time || t('calendar.all_day', 'All Day')}
+                          {formatDisplayTime(h.hearing_time)}
                         </Text>
                       </View>
                     </View>
@@ -146,13 +144,15 @@ export const CalendarDayView: React.FC<CalendarDayViewProps> = ({
                 <TouchableOpacity
                   key={`c-${c.id}`}
                   testID={`deadline-card-${c.id}`}
-                  onPress={() => onSelectEvent(c)}
-                  activeOpacity={0.7}
+                  onPress={() =>
+                    c.case_id && onOpenCase ? onOpenCase(c.case_id) : onSelectEvent(c)
+                  }
+                  activeOpacity={0.75}
                 >
                   <Card style={[styles.eventCard, styles.deadlineCardBorder]}>
                     <View style={styles.cardHeader}>
                       <Text style={styles.cardTitle}>{c.title}</Text>
-                      <Badge label={c.reminder_type} variant="danger" />
+                      <Badge label={c.reminder_type} variant="warning" />
                     </View>
 
                     {c.case_number ? (
@@ -162,7 +162,9 @@ export const CalendarDayView: React.FC<CalendarDayViewProps> = ({
                     <View style={styles.cardFooter}>
                       <View style={styles.iconTextRow}>
                         <AppIcon name="alarm-clock" size={12} color={Colors.text.muted} />
-                        <Text style={styles.detailText}>{c.time || c.date}</Text>
+                        <Text style={styles.detailText}>
+                          {formatDisplayTime(c.time || c.due_date)}
+                        </Text>
                       </View>
                       {c.is_completed ? (
                         <Badge label="COMPLETED" variant="success" />
@@ -176,13 +178,13 @@ export const CalendarDayView: React.FC<CalendarDayViewProps> = ({
             </View>
           )}
 
-          {/* General Reminders Section */}
+          {/* Reminders Section */}
           {reminders.length > 0 && (
             <View style={styles.section}>
               <View style={styles.sectionTitleRow}>
                 <AppIcon name="file-text" size={14} color={Colors.text.secondary} />
                 <Text style={styles.sectionTitle}>
-                  {t('calendar.reminders', 'Personal Reminders')} ({reminders.length})
+                  {t('calendar.reminders', 'Reminders')} ({reminders.length})
                 </Text>
               </View>
               {reminders.map((r: AgendaReminderItem) => (
@@ -192,7 +194,7 @@ export const CalendarDayView: React.FC<CalendarDayViewProps> = ({
                       <TouchableOpacity
                         style={{ flex: 1 }}
                         onPress={() => onSelectEvent(r)}
-                        activeOpacity={0.7}
+                        activeOpacity={0.75}
                       >
                         <Text
                           style={[
@@ -207,6 +209,7 @@ export const CalendarDayView: React.FC<CalendarDayViewProps> = ({
                         testID={`reminder-toggle-${r.id}`}
                         onPress={() => onToggleCompleteReminder?.(r)}
                         style={styles.checkButton}
+                        accessibilityRole="button"
                         accessibilityLabel={
                           r.is_completed ? 'Mark incomplete' : 'Mark complete'
                         }
@@ -221,7 +224,7 @@ export const CalendarDayView: React.FC<CalendarDayViewProps> = ({
 
                     <TouchableOpacity
                       onPress={() => onSelectEvent(r)}
-                      activeOpacity={0.7}
+                      activeOpacity={0.75}
                     >
                       {r.description ? (
                         <Text style={styles.partiesText} numberOfLines={2}>
@@ -232,7 +235,9 @@ export const CalendarDayView: React.FC<CalendarDayViewProps> = ({
                       <View style={styles.cardFooter}>
                         <View style={styles.iconTextRow}>
                           <AppIcon name="clock" size={12} color={Colors.text.muted} />
-                          <Text style={styles.detailText}>{r.time || r.date}</Text>
+                          <Text style={styles.detailText}>
+                            {formatDisplayTime(r.time || r.due_date)}
+                          </Text>
                         </View>
                         <Badge label={r.reminder_type} variant="secondary" />
                       </View>
@@ -256,14 +261,18 @@ export const CalendarDayView: React.FC<CalendarDayViewProps> = ({
                 <TouchableOpacity
                   key={`tk-${tk.id}`}
                   testID={`token-card-${tk.id}`}
-                  onPress={() => onSelectEvent(tk)}
-                  activeOpacity={0.7}
+                  onPress={() => (onOpenTokens ? onOpenTokens() : onSelectEvent(tk))}
+                  activeOpacity={0.75}
                 >
                   <Card style={[styles.eventCard, styles.tokenCardBorder]}>
                     <View style={styles.cardHeader}>
                       <Text style={styles.cardTitle}>Token #{tk.token_number}</Text>
                       <Badge label={tk.status} variant="gold" />
                     </View>
+
+                    {tk.case_id && caseNumberById[tk.case_id] ? (
+                      <Text style={styles.partiesText}>{caseNumberById[tk.case_id]}</Text>
+                    ) : null}
 
                     <View style={styles.cardFooter}>
                       <Text style={styles.detailText}>
@@ -282,84 +291,92 @@ export const CalendarDayView: React.FC<CalendarDayViewProps> = ({
           )}
         </>
       )}
-    </ScrollView>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
     padding: 16,
   },
-  summaryRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-    gap: 8,
-  },
-  statBox: {
-    flex: 1,
-    backgroundColor: Colors.surface,
-    paddingVertical: 12,
-    paddingHorizontal: 8,
-    borderRadius: 8,
+  emptyContainer: {
     alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 40,
+    paddingHorizontal: 20,
+    backgroundColor: Colors.surface,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: Colors.border,
   },
-  statNumber: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: Colors.primaryLight,
+  emptyIconCircle: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: Colors.surfaceBlue,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 14,
   },
-  statLabel: {
-    fontSize: 12,
-    color: Colors.text.secondary,
-    marginTop: 2,
+  emptyTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: Colors.text.primary,
+    marginBottom: 6,
     textAlign: 'center',
   },
+  emptySubtitle: {
+    fontSize: 13,
+    color: Colors.text.muted,
+    textAlign: 'center',
+    lineHeight: 19,
+  },
   section: {
-    marginBottom: 20,
+    marginBottom: 18,
   },
   sectionTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    marginBottom: 8,
+    marginBottom: 10,
   },
   sectionTitle: {
     fontSize: 13,
     fontWeight: '700',
     color: Colors.text.secondary,
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 0.4,
   },
   eventCard: {
     marginBottom: 10,
-    padding: 12,
+    padding: 14,
     borderWidth: 1,
     borderColor: Colors.border,
   },
   deadlineCardBorder: {
-    borderLeftWidth: 4,
+    borderLeftWidth: 3,
     borderLeftColor: Colors.warning,
   },
   tokenCardBorder: {
-    borderLeftWidth: 4,
+    borderLeftWidth: 3,
     borderLeftColor: Colors.gold,
   },
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    gap: 8,
     marginBottom: 6,
   },
   cardTitle: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '700',
     color: Colors.text.primary,
     flex: 1,
-    marginRight: 8,
+  },
+  completedText: {
+    textDecorationLine: 'line-through',
+    color: Colors.text.muted,
   },
   partiesText: {
     fontSize: 13,
@@ -370,6 +387,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginTop: 4,
   },
   iconTextRow: {
     flexDirection: 'row',
@@ -386,48 +404,16 @@ const styles = StyleSheet.create({
     color: Colors.primaryLight,
   },
   pendingText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
     color: Colors.warning,
-  },
-  completedText: {
-    textDecorationLine: 'line-through',
-    color: Colors.text.muted,
-  },
-  checkButton: {
-    padding: 4,
   },
   tokenHighlight: {
     fontSize: 12,
     fontWeight: '700',
     color: Colors.gold,
   },
-  emptyContainer: {
-    paddingVertical: 60,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  emptyIconCircle: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: Colors.surfaceBlue,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
-  },
-  emptyTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: Colors.text.primary,
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  emptySubtitle: {
-    fontSize: 13,
-    color: Colors.text.secondary,
-    textAlign: 'center',
-    paddingHorizontal: 32,
-    lineHeight: 18,
+  checkButton: {
+    padding: 4,
   },
 });

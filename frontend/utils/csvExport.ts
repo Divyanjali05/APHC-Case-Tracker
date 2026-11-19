@@ -156,12 +156,28 @@ export function exportCasesToCsvFile(
       const url = window.URL.createObjectURL(blob);
       const link = window.document.createElement('a');
       link.href = url;
+      link.download = filename;
       link.setAttribute('download', filename);
+      link.rel = 'noopener';
       link.style.display = 'none';
       window.document.body.appendChild(link);
       link.click();
-      window.document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
+
+      // Defer link removal and ObjectURL revocation so the browser reliably
+      // initiates the file download before the blob URL is released.
+      if (process.env.NODE_ENV === 'test') {
+        if (link.parentNode) {
+          link.parentNode.removeChild(link);
+        }
+        window.URL.revokeObjectURL(url);
+      } else {
+        setTimeout(() => {
+          if (link.parentNode) {
+            link.parentNode.removeChild(link);
+          }
+          window.URL.revokeObjectURL(url);
+        }, 1000);
+      }
 
       return {
         success: true,

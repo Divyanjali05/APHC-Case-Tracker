@@ -4,11 +4,14 @@ import { useTranslation } from 'react-i18next';
 import { Colors } from '../../constants/colors';
 import { CalendarViewType } from '../../types';
 import { AppIcon } from '../common/AppIcon';
+import { formatCalendarPeriodLabel, isLocalToday } from '../../utils/calendarDate';
 
 export interface CalendarHeaderProps {
   currentView: CalendarViewType;
   onViewChange: (view: CalendarViewType) => void;
   selectedDate: string;
+  startDate?: string;
+  endDate?: string;
   onPrev: () => void;
   onNext: () => void;
   onToday: () => void;
@@ -20,6 +23,8 @@ export const CalendarHeader: React.FC<CalendarHeaderProps> = ({
   currentView,
   onViewChange,
   selectedDate,
+  startDate,
+  endDate,
   onPrev,
   onNext,
   onToday,
@@ -27,25 +32,17 @@ export const CalendarHeader: React.FC<CalendarHeaderProps> = ({
   onOpenSync,
 }) => {
   const { t } = useTranslation();
-
-  const formatDateDisplay = (dateStr: string) => {
-    try {
-      const d = new Date(dateStr);
-      if (isNaN(d.getTime())) return dateStr;
-      return d.toLocaleDateString(undefined, {
-        weekday: 'short',
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric',
-      });
-    } catch {
-      return dateStr;
-    }
-  };
+  const selectedIsToday = isLocalToday(selectedDate);
+  const periodLabel = formatCalendarPeriodLabel(
+    selectedDate,
+    currentView,
+    startDate,
+    endDate
+  );
 
   return (
     <View style={styles.container} testID="calendar-header">
-      {/* Top Bar: View Tabs and Actions */}
+      {/* Top Bar: View Switcher and Actions */}
       <View style={styles.topRow}>
         <View style={styles.segmentedControl}>
           {(['day', 'week', 'month'] as CalendarViewType[]).map(view => (
@@ -57,6 +54,8 @@ export const CalendarHeader: React.FC<CalendarHeaderProps> = ({
                 currentView === view && styles.segmentButtonActive,
               ]}
               onPress={() => onViewChange(view)}
+              accessibilityRole="button"
+              accessibilityState={{ selected: currentView === view }}
             >
               <Text
                 style={[
@@ -75,6 +74,7 @@ export const CalendarHeader: React.FC<CalendarHeaderProps> = ({
             testID="open-sync-btn"
             style={styles.iconButton}
             onPress={onOpenSync}
+            accessibilityRole="button"
             accessibilityLabel={t('calendar.sync', 'Sync')}
           >
             <AppIcon name="refresh" size={16} color={Colors.primary} />
@@ -84,10 +84,11 @@ export const CalendarHeader: React.FC<CalendarHeaderProps> = ({
             testID="add-reminder-btn"
             style={styles.addButton}
             onPress={onOpenAddReminder}
+            accessibilityRole="button"
             accessibilityLabel={t('calendar.add_reminder', '+ Reminder')}
           >
             <AppIcon name="plus" size={14} color={Colors.text.white} />
-            <Text style={styles.addButtonText}>
+            <Text style={styles.addButtonText} numberOfLines={1}>
               {t('calendar.reminder_short', 'Reminder')}
             </Text>
           </TouchableOpacity>
@@ -100,27 +101,42 @@ export const CalendarHeader: React.FC<CalendarHeaderProps> = ({
           testID="nav-prev-btn"
           style={styles.navArrow}
           onPress={onPrev}
+          accessibilityRole="button"
           accessibilityLabel={t('common.previous', 'Previous')}
         >
           <AppIcon name="chevron-left" size={18} color={Colors.text.primary} />
         </TouchableOpacity>
 
         <View style={styles.dateLabelContainer}>
-          <Text style={styles.dateText}>{formatDateDisplay(selectedDate)}</Text>
+          <Text style={styles.dateText} numberOfLines={1} testID="calendar-date-label">
+            {periodLabel}
+          </Text>
+          {selectedIsToday && (
+            <View style={styles.todayIndicatorPill} testID="calendar-today-indicator">
+              <Text style={styles.todayIndicatorText}>
+                {t('calendar.today', 'Today')}
+              </Text>
+            </View>
+          )}
         </View>
 
-        <TouchableOpacity
-          testID="nav-today-btn"
-          style={styles.todayButton}
-          onPress={onToday}
-        >
-          <Text style={styles.todayButtonText}>{t('calendar.today', 'Today')}</Text>
-        </TouchableOpacity>
+        {!selectedIsToday && (
+          <TouchableOpacity
+            testID="nav-today-btn"
+            style={styles.todayButton}
+            onPress={onToday}
+            accessibilityRole="button"
+            accessibilityLabel="Jump to Today"
+          >
+            <Text style={styles.todayButtonText}>{t('calendar.today', 'Today')}</Text>
+          </TouchableOpacity>
+        )}
 
         <TouchableOpacity
           testID="nav-next-btn"
           style={styles.navArrow}
           onPress={onNext}
+          accessibilityRole="button"
           accessibilityLabel={t('common.next', 'Next')}
         >
           <AppIcon name="chevron-right" size={18} color={Colors.text.primary} />
@@ -133,7 +149,7 @@ export const CalendarHeader: React.FC<CalendarHeaderProps> = ({
 const styles = StyleSheet.create({
   container: {
     backgroundColor: Colors.surface,
-    paddingHorizontal: 16,
+    paddingHorizontal: 14,
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
@@ -143,6 +159,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 12,
+    gap: 8,
+    flexWrap: 'wrap',
   },
   segmentedControl: {
     flexDirection: 'row',
@@ -151,9 +169,9 @@ const styles = StyleSheet.create({
     padding: 3,
   },
   segmentButton: {
-    paddingHorizontal: 14,
+    paddingHorizontal: 12,
     paddingVertical: 8,
-    minHeight: 40,
+    minHeight: 38,
     justifyContent: 'center',
     alignItems: 'center',
     borderRadius: 6,
@@ -175,9 +193,9 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   iconButton: {
-    minWidth: 40,
-    minHeight: 40,
-    padding: 9,
+    minWidth: 38,
+    minHeight: 38,
+    padding: 8,
     borderRadius: 8,
     backgroundColor: Colors.surfaceSubtle,
     borderWidth: 1,
@@ -191,9 +209,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 5,
     backgroundColor: Colors.primary,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    minHeight: 40,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    minHeight: 38,
     borderRadius: 8,
   },
   addButtonText: {
@@ -205,11 +223,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: 6,
   },
   navArrow: {
-    minWidth: 40,
-    minHeight: 40,
-    padding: 9,
+    minWidth: 38,
+    minHeight: 38,
+    padding: 8,
     borderRadius: 8,
     backgroundColor: Colors.surfaceSubtle,
     borderWidth: 1,
@@ -219,28 +238,46 @@ const styles = StyleSheet.create({
   },
   dateLabelContainer: {
     flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    flexWrap: 'wrap',
   },
   dateText: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '700',
     color: Colors.text.primary,
+    textAlign: 'center',
+  },
+  todayIndicatorPill: {
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 999,
+  },
+  todayIndicatorText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: Colors.text.white,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
   },
   todayButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    minHeight: 40,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    minHeight: 38,
     justifyContent: 'center',
     alignItems: 'center',
     borderRadius: 8,
     backgroundColor: Colors.surfaceBlue,
     borderWidth: 1,
     borderColor: Colors.infoBorder,
-    marginRight: 8,
   },
   todayButtonText: {
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: '700',
     color: Colors.primary,
   },
 });

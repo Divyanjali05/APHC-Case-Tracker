@@ -32,7 +32,8 @@ export default function SettingsScreen() {
   const { width } = useWindowDimensions();
   const isDesktop = width >= 960;
 
-  const { user, isAuthenticated, isAdmin, signOut, updateProfile } = useAuth();
+  const { user, isAuthenticated, isAdmin, isLoggingOut, signOut, updateProfile } =
+    useAuth();
   const { showToast } = useToast();
 
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
@@ -89,13 +90,19 @@ export default function SettingsScreen() {
   };
 
   const handleConfirmLogout = async () => {
+    if (isSigningOut || isLoggingOut) {
+      return;
+    }
     setIsSigningOut(true);
     try {
       await pushNotificationService.deactivatePushNotifications().catch(() => {});
       await signOut();
       setIsLogoutDialogVisible(false);
       showToast('Signed out securely.', 'info');
-      router.replace('/');
+      if (typeof router.dismissAll === 'function' && router.canDismiss?.()) {
+        router.dismissAll();
+      }
+      router.replace('/(auth)/login');
     } finally {
       setIsSigningOut(false);
     }

@@ -31,7 +31,7 @@ from .serializers import (
     HearingSerializer,
     JudgmentSerializer,
 )
-from .services import DashboardService
+from .services import CaseStatusService, DashboardService
 from .storage import secure_document_storage, validate_case_document_upload
 
 
@@ -92,19 +92,25 @@ class CaseListCreateView(generics.ListCreateAPIView):
             elif has_judgment.lower() in ("false", "0"):
                 queryset = queryset.filter(judgments__isnull=True)
 
-        # Status filter
+        # Status filter (uses the exact same canonical predicates as DashboardService)
         status_param = self.request.query_params.get("status", "").strip().lower()
-        if status_param == "adjourned":
-            queryset = queryset.filter(
-                Q(current_stage__iexact="ADJOURNED")
-                | Q(hearings__business_conducted__icontains="adjourn")
-            ).distinct()
-        elif status_param == "upcoming":
-            queryset = queryset.filter(
-                Q(next_hearing_date__isnull=False) | Q(current_stage__in=["UPCOMING", "LISTED"])
-            ).distinct()
-        elif status_param in ("judgment", "judgment available", "disposed"):
+        if status_param in ("pending", "pending hearing", "active"):
+            queryset = queryset.filter(CaseStatusService.pending_q()).distinct()
+        elif status_param == "adjourned":
+            queryset = queryset.filter(CaseStatusService.adjourned_q()).distinct()
+        elif status_param in ("disposed", "closed"):
+            queryset = queryset.filter(CaseStatusService.disposed_q()).distinct()
+        elif status_param in ("judgment", "judgment available"):
             queryset = queryset.filter(judgments__isnull=False).distinct()
+        elif status_param == "upcoming":
+            today = timezone.localdate()
+            queryset = (
+                queryset.filter(CaseStatusService.pending_q())
+                .filter(
+                    Q(next_hearing_date__gte=today) | Q(current_stage__in=["UPCOMING", "LISTED"])
+                )
+                .distinct()
+            )
 
         # Ordering
         ordering = self.request.query_params.get("ordering", "-updated_at")

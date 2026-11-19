@@ -1,3 +1,4 @@
+import os
 import sys
 from datetime import timedelta
 from pathlib import Path
@@ -5,6 +6,7 @@ from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
 
 from decouple import Csv, config
+from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -16,8 +18,38 @@ if str(APPS_DIR) not in sys.path:
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
-# Load .env file
-load_dotenv(BASE_DIR / ".env")
+# Environment Selection & Staging Isolation
+# Local staging mode is active by default. Non-staging environment is only
+# active when explicitly selected via DJANGO_ENV/ENVIRONMENT/APHC_ENV or production settings.
+explicit_env = (
+    os.getenv("DJANGO_ENV", "").strip().lower()
+    or os.getenv("ENVIRONMENT", "").strip().lower()
+    or os.getenv("APHC_ENV", "").strip().lower()
+)
+explicit_settings = os.getenv("DJANGO_SETTINGS_MODULE", "").strip()
+explicit_env_file = os.getenv("ENV_FILE", "").strip()
+
+is_explicit_non_staging = (
+    explicit_env in ("production", "prod")
+    or explicit_settings == "config.settings.production"
+    or (explicit_env_file and explicit_env_file != str(BASE_DIR / ".env.staging.local"))
+)
+
+if is_explicit_non_staging:
+    # Explicit non-staging / production environment: preserve existing behavior
+    target_env = Path(explicit_env_file) if explicit_env_file else (BASE_DIR / ".env")
+    if target_env.exists():
+        load_dotenv(target_env, override=True)
+else:
+    # Local staging mode: strictly require backend/.env.staging.local; never fallback to backend/.env
+    staging_env = BASE_DIR / ".env.staging.local"
+    if not staging_env.exists():
+        raise ImproperlyConfigured(
+            f"Local staging configuration error: '{staging_env}' does not exist. "
+            "Never falling back to backend/.env in local staging mode to prevent accidental "
+            "connections to external or production databases. Please configure backend/.env.staging.local."
+        )
+    load_dotenv(staging_env, override=True)
 
 SECRET_KEY = config(
     "DJANGO_SECRET_KEY", default="django-insecure-aphc-dev-key-change-in-production"

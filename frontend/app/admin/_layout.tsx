@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { Stack, useRouter } from 'expo-router';
+import { Redirect, Stack, useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Colors } from '../../constants/colors';
 import { useAuth } from '../../features/auth/AuthContext';
@@ -7,18 +7,22 @@ import { useAuth } from '../../features/auth/AuthContext';
 export default function AdminLayout() {
   const { t } = useTranslation();
   const router = useRouter();
-  const { isLoading, isAuthenticated, isAdmin, isDemo } = useAuth();
+  const { isLoading, isLoggingOut, isAuthenticated, isAdmin, isDemo } = useAuth();
 
   useEffect(() => {
-    if (isLoading) return;
+    if (isLoading || isLoggingOut) return;
     if (!isAuthenticated || isDemo) {
-      router.replace('/');
+      router.replace('/(auth)/login');
       return;
     }
     if (!isAdmin) {
       router.replace('/(tabs)');
     }
-  }, [isLoading, isAuthenticated, isAdmin, isDemo, router]);
+  }, [isLoading, isLoggingOut, isAuthenticated, isAdmin, isDemo, router]);
+
+  if (!isLoading && !isLoggingOut && (!isAuthenticated || isDemo)) {
+    return <Redirect href="/(auth)/login" />;
+  }
 
   return (
     <Stack

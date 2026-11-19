@@ -1,0 +1,49 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>
+endobj
+4 0 obj
+<< /Length 446 >>
+stream
+BT
+/F1 11 Tf
+50 760 Td
+16 TL
+([TEST DATA] APHC Case Tracker - Synthetic Import Sample \(PDF\)) Tj
+T* (NOT A GENUINE COURT RECORD - STAGING TEST ONLY) Tj
+T* (Case Number: CRLP 92005/2026) Tj
+T* (Petitioner: Synthetic Criminal Petitioner PDF) Tj
+T* (Respondent: Synthetic Prosecution Unit Test) Tj
+T* (Bench: High Court of Andhra Pradesh - Criminal Bench II) Tj
+T* (Court Hall: 2) Tj
+T* (Stage: PENDING) Tj
+T* (Next Hearing Date: 2026-12-08) Tj
+ET
+endstream
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+6 0 obj
+<< /Title ([TEST DATA] CRLP 92005/2026 Synthetic Filing) /Author (APHC Staging Seed Generator - TEST DATA) >>
+endobj
+xref
+0 7
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000241 00000 n 
+0000000737 00000 n 
+0000000807 00000 n 
+trailer
+<< /Size 7 /Root 1 0 R /Info 6 0 R >>
+startxref
+932
+%%EOF

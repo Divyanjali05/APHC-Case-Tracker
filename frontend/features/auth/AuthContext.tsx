@@ -4,9 +4,16 @@ import React, {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
-import { apiClient } from '../../services/api/client';
+import {
+  apiClient,
+  beginLogoutSession,
+  getAuthSessionEpoch,
+  isLogoutInProgress,
+  markAuthenticatedSession,
+} from '../../services/api/client';
 import { ENDPOINTS } from '../../services/api/endpoints';
 import { authService } from '../../services/auth/authService';
 import { tokenStorage } from '../../services/auth/tokenStorage';
@@ -147,6 +154,7 @@ export interface AuthContextValue {
   isAuthenticated: boolean;
   isDemo: boolean;
   isLoading: boolean;
+  isLoggingOut: boolean;
   signIn: (
     identifier: string,
     password: string,
@@ -167,6 +175,7 @@ const DEFAULT_AUTH_CONTEXT: AuthContextValue = {
   isAuthenticated: false,
   isDemo: false,
   isLoading: false,
+  isLoggingOut: false,
   signIn: async (identifier, password, rememberIdentifier) =>
     executeSignIn(identifier, password, rememberIdentifier),
   signOut: async () => authService.logout(),
@@ -195,6 +204,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [hasToken, setHasToken] = useState(false);
   const [isDemo, setIsDemo] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  const isLoggingOutRef = useRef(false);
+  const activeSignOutRef = useRef<Promise<void> | null>(null);
 
   const persistUserSnapshot = useCallback(async (nextUser: AuthUser | null) => {
     if (nextUser) {
@@ -212,8 +225,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const refreshProfile = useCallback(async (): Promise<AuthUser | null> => {
+    if (isLoggingOutRef.current || isLogoutInProgress()) {
+      return null;
+    }
+    const epoch = getAuthSessionEpoch();
     try {
       const response = await apiClient.get<AuthUser>(ENDPOINTS.AUTH.PROFILE);
+      if (
+        isLoggingOutRef.current ||
+        isLogoutInProgress() ||
+        getAuthSessionEpoch() !== epoch
+      ) {
+        return null;
+      }
       const profileData = response.data;
       setUser(profileData);
       setTokenRole(profileData.role);
@@ -229,11 +253,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     let mounted = true;
 
     const bootstrap = async () => {
+      const bootEpoch = getAuthSessionEpoch();
       try {
         const accessToken =
           typeof tokenStorage.getAccessToken === 'function'
             ? await tokenStorage.getAccessToken()
             : null;
+
+        if (!mounted || isLoggingOutRef.current || getAuthSessionEpoch() !== bootEpoch) {
+          return;
+        }
 
         if (!accessToken) {
           if (typeof tokenStorage.setDemoMode === 'function') {
@@ -255,7 +284,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             ? await tokenStorage.getUserSnapshot()
             : null;
 
-        if (mounted) {
+        if (mounted && !isLoggingOutRef.current && getAuthSessionEpoch() === bootEpoch) {
           setHasToken(true);
           setIsDemo(false);
           if (snapshot) {
@@ -271,7 +300,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (accessToken.split('.').length === 3) {
           try {
             const profileRes = await apiClient.get<AuthUser>(ENDPOINTS.AUTH.PROFILE);
-            if (mounted && profileRes.data) {
+            if (
+              mounted &&
+              !isLoggingOutRef.current &&
+              !isLogoutInProgress() &&
+              getAuthSessionEpoch() === bootEpoch &&
+              profileRes.data
+            ) {
               setUser(profileRes.data);
               setTokenRole(profileRes.data.role);
               await persistUserSnapshot(profileRes.data);
@@ -298,10 +333,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setIsDemo(false);
         setUser(null);
         setTokenRole(null);
-        setTimeout(() => {
-          queryClient.cancelQueries();
-          queryClient.clear();
-        }, 0);
+        queryClient.cancelQueries();
+        queryClient.clear();
       }
     });
 
@@ -317,6 +350,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       password: string,
       rememberIdentifier?: boolean
     ): Promise<SignInResult> => {
+      markAuthenticatedSession();
+      await queryClient.cancelQueries();
+      queryClient.clear();
       const result = await executeSignIn(identifier, password, rememberIdentifier);
       setHasToken(true);
       setIsDemo(false);
@@ -340,32 +376,64 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const signOut = useCallback(async () => {
-    queryClient.cancelQueries();
-    try {
-      await authService.logout();
-    } catch {
-      // Ignore network errors on logout
+    if (activeSignOutRef.current) {
+      return activeSignOutRef.current;
     }
-    if (typeof tokenStorage.setDemoMode === 'function') {
-      await tokenStorage.setDemoMode(false);
-    }
-    setUser(null);
-    setTokenRole(null);
-    setHasToken(false);
-    setIsDemo(false);
-    setTimeout(() => {
-      queryClient.cancelQueries();
-      queryClient.clear();
-    }, 0);
+
+    const performSignOut = async () => {
+      // 1. Immediately enter loggingOut state to prevent duplicate logout requests
+      isLoggingOutRef.current = true;
+      setIsLoggingOut(true);
+
+      try {
+        // 2. Immediately stop/invalidate any pending token-refresh operations
+        beginLogoutSession();
+
+        // 3. Cancel in-flight React Query fetches so no late API response mutates cache
+        await queryClient.cancelQueries();
+
+        // 4. Send backend logout with refresh token and clear local storage/tokens
+        try {
+          await authService.logout();
+        } catch {
+          // Local session cleanup is still guaranteed below
+        }
+
+        if (typeof tokenStorage.setDemoMode === 'function') {
+          await tokenStorage.setDemoMode(false);
+        }
+        await tokenStorage.clearTokens();
+
+        // 5. Clear authenticated React user/profile/token state
+        setUser(null);
+        setTokenRole(null);
+        setHasToken(false);
+        setIsDemo(false);
+
+        // 6. Synchronously clear all user-specific React Query caches
+        await queryClient.cancelQueries();
+        queryClient.clear();
+      } finally {
+        isLoggingOutRef.current = false;
+        setIsLoggingOut(false);
+        activeSignOutRef.current = null;
+      }
+    };
+
+    activeSignOutRef.current = performSignOut();
+    return activeSignOutRef.current;
   }, []);
 
   const updateProfile = useCallback(
     async (payload: SelfProfileUpdatePayload): Promise<AuthUser> => {
+      const epoch = getAuthSessionEpoch();
       const response = await apiClient.patch<AuthUser>(ENDPOINTS.AUTH.PROFILE, payload);
       const updated = response.data;
-      setUser(updated);
-      setTokenRole(updated.role);
-      await persistUserSnapshot(updated);
+      if (!isLoggingOutRef.current && getAuthSessionEpoch() === epoch) {
+        setUser(updated);
+        setTokenRole(updated.role);
+        await persistUserSnapshot(updated);
+      }
       return updated;
     },
     [persistUserSnapshot]
@@ -383,9 +451,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       role,
       isAdmin: role === 'ADMIN',
       isSuperuser: Boolean(user?.is_superuser),
-      isAuthenticated: hasToken && !isDemo,
+      isAuthenticated: hasToken && !isDemo && !isLoggingOut,
       isDemo,
       isLoading,
+      isLoggingOut,
       signIn,
       signOut,
       enterDemoMode,
@@ -399,6 +468,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       hasToken,
       isDemo,
       isLoading,
+      isLoggingOut,
       signIn,
       signOut,
       enterDemoMode,

@@ -6,7 +6,15 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Animated } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  Animated,
+  Platform,
+  ViewStyle,
+} from 'react-native';
 import { Colors } from '../../constants/colors';
 import { Radius, Shadows, Spacing } from '../../constants/theme';
 import { AppIcon, AppIconName } from './AppIcon';
@@ -59,7 +67,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     Animated.timing(opacity, {
       toValue: 0,
       duration: 160,
-      useNativeDriver: true,
+      useNativeDriver: Platform.OS !== 'web',
     }).start(() => {
       setToast(null);
     });
@@ -92,7 +100,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         Animated.timing(opacity, {
           toValue: 1,
           duration: 180,
-          useNativeDriver: true,
+          useNativeDriver: Platform.OS !== 'web',
         }).start();
       }
 
@@ -211,11 +219,14 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   overlay: {
-    position: 'absolute',
-    top: 48,
+    position: (Platform.OS === 'web'
+      ? 'fixed'
+      : 'absolute') as unknown as ViewStyle['position'],
+    top: Platform.OS === 'web' ? 16 : 48,
     left: Spacing.screenHorizontal,
     right: Spacing.screenHorizontal,
-    zIndex: 9999,
+    zIndex: 99999,
+    elevation: 20,
     alignItems: 'center',
   },
   banner: {

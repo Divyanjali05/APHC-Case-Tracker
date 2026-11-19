@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -20,27 +20,36 @@ import { Badge } from '../../components/common/Badge';
 import { Button } from '../../components/common/Button';
 import { AppIcon } from '../../components/common/AppIcon';
 import { SkeletonCard } from '../../components/common/SkeletonCard';
+import { useToast } from '../../components/common/Toast';
 import { VoiceInputModal } from '../../components/speech/VoiceInputModal';
 import { NotificationCenterModal } from '../../components/notifications/NotificationCenterModal';
 import { JudgmentDetailsModal } from '../../components/cases/JudgmentDetailsModal';
 import { DocumentImportModal } from '../../components/cases/DocumentImportModal';
-import { PdfImportModal } from '../../components/cases/PdfImportModal';
+import {
+  CaseFilterModal,
+  CaseFilters,
+  DEFAULT_FILTERS,
+  countActiveFilters,
+} from '../../components/cases/CaseFilterModal';
+import { SortDropdownMenu } from '../../components/cases/SortDropdownMenu';
+import { Colors } from '../../constants/colors';
 import { Radius, Shadows, Spacing } from '../../constants/theme';
 import { fetchHealthCheck } from '../../services/api/client';
 import { speechService } from '../../services/speech/ttsService';
-import { normalizeVoiceQuery } from '../../services/speech/voiceQueryNormalizer';
 import { useDashboard, useCases } from '../../features/cases/hooks';
 import { useAuth } from '../../features/auth/AuthContext';
+import { exportCasesToCsvFile } from '../../utils/csvExport';
+import {
+  SortType,
+  extractCaseFilterOptions,
+  filterAndSortCases,
+  getCanonicalCaseStatus,
+  getSortButtonLabel,
+  buildActiveFilterChips,
+} from '../../utils/caseFiltering';
 import { CaseItem } from '../../types';
 
-type FilterType =
-  | 'ALL'
-  | 'PENDING'
-  | 'DISPOSED'
-  | 'ADJOURNED'
-  | 'WITH_JUDGMENT'
-  | 'UPCOMING';
-type SortField = 'NEXT_HEARING' | 'STARTED_DATE' | 'CASE_NUMBER' | 'STATUS';
+type StatCardFilter = 'ALL' | 'PENDING' | 'DISPOSED' | 'ADJOURNED';
 
 const PAGE_SIZE = 10;
 
@@ -77,13 +86,7 @@ export const formatTableDate = (dateStr?: string | null): string => {
  * Strictly returns 'N/A' unless the case is disposed and a verified judgment date exists.
  */
 export const getClosedDate = (caseItem: CaseItem): string => {
-  const statusUpper = (
-    caseItem.status ||
-    caseItem.status_details?.status ||
-    ''
-  ).toUpperCase();
-  const isDisposed = statusUpper === 'DISPOSED' || statusUpper === 'CLOSED';
-  if (!isDisposed) {
+  if (getCanonicalCaseStatus(caseItem) !== 'DISPOSED') {
     return 'N/A';
   }
   const judgmentDate =
@@ -98,7 +101,9 @@ export default function DashboardScreen() {
   const { t, i18n } = useTranslation();
   const router = useRouter();
   const { width } = useWindowDimensions();
+  const isMobile = width < 768;
   const isDesktop = width >= 1024;
+  const { showToast } = useToast();
 
   // Responsive compact width for sticky case identity column (approx 135–145px on 393px viewport)
   const stickyColWidth = useMemo(() => {
@@ -112,7 +117,7 @@ export default function DashboardScreen() {
 
   const { user, isAuthenticated, isDemo } = useAuth();
 
-  // Modals state
+  // Modals & Drawers state
   const [isVoiceModalVisible, setIsVoiceModalVisible] = useState(false);
   const [isNotificationCenterVisible, setIsNotificationCenterVisible] = useState(false);
   const [isPdfImportVisible, setIsPdfImportVisible] = useState(false);
@@ -121,13 +126,35 @@ export default function DashboardScreen() {
   );
   const [isJudgmentModalVisible, setIsJudgmentModalVisible] = useState(false);
 
-  // Table controls state
-  const [searchQuery, setSearchQuery] = useState('');
-  const [activeFilter, setActiveFilter] = useState<FilterType>('ALL');
-  const [sortField, setSortField] = useState<SortField>('NEXT_HEARING');
+  // Left-side Filter Drawer & Sort Dropdown state
+  const [advancedFilters, setAdvancedFilters] = useState<CaseFilters>(DEFAULT_FILTERS);
+  const [isFilterDrawerVisible, setIsFilterDrawerVisible] = useState(false);
+  const [sortBy, setSortBy] = useState<SortType>('NEXT_HEARING');
   const [sortAsc, setSortAsc] = useState(false);
+  const [isSortDropdownOpen, setIsSortDropdownOpen] = useState(false);
+  const sortBtnRef = useRef<View>(null);
+  const [sortMenuCoords, setSortMenuCoords] = useState<
+    { x: number; y: number } | undefined
+  >(undefined);
+  const [isExportingCsv, setIsExportingCsv] = useState(false);
+
+  // Table search & pagination state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [expandedRowId, setExpandedRowId] = useState<number | null>(null);
+
+  useEffect(() => {
+    const trimmed = searchQuery.trim();
+    if (!trimmed) {
+      setDebouncedSearch('');
+      return;
+    }
+    const timer = setTimeout(() => {
+      setDebouncedSearch(trimmed);
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   // API Queries
   const { refetch: refetchHealth } = useQuery({
@@ -151,7 +178,10 @@ export default function DashboardScreen() {
     isError: isCasesError,
     refetch: refetchCases,
     isRefetching: isCasesRefetching,
-  } = useCases({ enabled: Boolean(isAuthenticated || isDemo) });
+  } = useCases({
+    enabled: Boolean(isAuthenticated || isDemo),
+    search: debouncedSearch,
+  });
 
   const isLoading = (isDashboardLoading || isCasesLoading) && !dashboard && !rawCases;
   const isError = (isDashboardError || isCasesError) && !dashboard && !rawCases;
@@ -208,19 +238,36 @@ export default function DashboardScreen() {
         adjourned: dashboard.summary.adjourned_cases,
       };
     }
-    // Compute from cases list if summary is absent
+    // Compute from cases list if summary is absent (same canonical buckets as DashboardService)
     const total = cases.length;
     let pending = 0;
     let disposed = 0;
     let adjourned = 0;
     cases.forEach(c => {
-      const s = (c.status || c.status_details?.status || '').toUpperCase();
-      if (s === 'DISPOSED' || s === 'CLOSED') disposed++;
-      else if (s === 'ADJOURNED') adjourned++;
+      const canonical = getCanonicalCaseStatus(c);
+      if (canonical === 'DISPOSED') disposed++;
+      else if (canonical === 'ADJOURNED') adjourned++;
       else pending++;
     });
     return { total, pending, disposed, adjourned };
   }, [dashboard?.summary, cases]);
+
+  // Dynamic filter drawer options derived from loaded cases + backend choices
+  const { availableCaseTypes, availableCourts, availableYears } = useMemo(
+    () => extractCaseFilterOptions(cases),
+    [cases]
+  );
+
+  const activeFilterCount = countActiveFilters(advancedFilters);
+
+  const activeFilterChips = useMemo(
+    () =>
+      buildActiveFilterChips(advancedFilters, updater => {
+        setAdvancedFilters(updater);
+        setCurrentPage(1);
+      }),
+    [advancedFilters]
+  );
 
   // Language management
   const nextLanguage = () => {
@@ -251,114 +298,106 @@ export default function DashboardScreen() {
     speechService.speak(text);
   };
 
-  // Handle stat card filter click
-  const handleStatCardClick = (targetFilter: FilterType) => {
-    if (activeFilter === targetFilter) {
-      setActiveFilter('ALL');
-    } else {
-      setActiveFilter(targetFilter);
-    }
+  // Handle stat card click (syncs cleanly with Filter Drawer status filter)
+  const handleStatCardClick = (targetStatus: StatCardFilter) => {
+    setAdvancedFilters(prev => ({
+      ...prev,
+      status: prev.status === targetStatus ? 'ALL' : targetStatus,
+    }));
     setCurrentPage(1);
   };
 
-  // Search and Filter logic
-  const filteredCases = useMemo(() => {
-    let result = [...cases];
+  const handleOpenFilterDrawer = () => {
+    setIsSortDropdownOpen(false);
+    setIsFilterDrawerVisible(true);
+  };
 
-    // Search query normalization (handles English, Telugu numerals, Hindi, etc.)
-    if (searchQuery.trim()) {
-      const rawLower = searchQuery.toLowerCase().trim();
-      const normalizedQuery = normalizeVoiceQuery(searchQuery)
-        .normalized.toLowerCase()
-        .trim();
-
-      result = result.filter(item => {
-        const fullCaseNumber =
-          `${item.case_type} ${item.case_number}/${item.filing_year}`.toLowerCase();
-        const caseNumberSimple = `${item.case_type} ${item.case_number}`.toLowerCase();
-        const petitioner = (item.petitioner || '').toLowerCase();
-        const respondent = (item.respondent || '').toLowerCase();
-        const numOnly = String(item.case_number).toLowerCase();
-
-        return (
-          fullCaseNumber.includes(rawLower) ||
-          fullCaseNumber.includes(normalizedQuery) ||
-          caseNumberSimple.includes(rawLower) ||
-          caseNumberSimple.includes(normalizedQuery) ||
-          numOnly.includes(rawLower) ||
-          numOnly.includes(normalizedQuery) ||
-          petitioner.includes(rawLower) ||
-          petitioner.includes(normalizedQuery) ||
-          respondent.includes(rawLower) ||
-          respondent.includes(normalizedQuery)
-        );
-      });
-    }
-
-    // Status / Category Filtering
-    if (activeFilter !== 'ALL') {
-      result = result.filter(item => {
-        const s = (item.status || item.status_details?.status || '').toUpperCase();
-        if (activeFilter === 'PENDING') {
-          return s === 'PENDING' || s === 'ACTIVE' || s === 'IN_PROGRESS';
-        }
-        if (activeFilter === 'DISPOSED') {
-          return s === 'DISPOSED' || s === 'CLOSED';
-        }
-        if (activeFilter === 'ADJOURNED') {
-          return s === 'ADJOURNED';
-        }
-        if (activeFilter === 'WITH_JUDGMENT') {
-          return Boolean(
-            item.judgment_date ||
-              item.status_details?.has_judgment ||
-              item.latest_judgment ||
-              (item.judgments && item.judgments.length > 0)
-          );
-        }
-        if (activeFilter === 'UPCOMING') {
-          const nextDate = item.effective_next_hearing_date || item.next_hearing_date;
-          return Boolean(nextDate && nextDate !== 'N/A');
-        }
-        return true;
-      });
-    }
-
-    // Sorting
-    result.sort((a, b) => {
-      let comparison = 0;
-      if (sortField === 'NEXT_HEARING') {
-        const dateA = a.effective_next_hearing_date || a.next_hearing_date || '';
-        const dateB = b.effective_next_hearing_date || b.next_hearing_date || '';
-        if (!dateA && !dateB) comparison = 0;
-        else if (!dateA) comparison = 1;
-        else if (!dateB) comparison = -1;
-        else comparison = new Date(dateA).getTime() - new Date(dateB).getTime();
-      } else if (sortField === 'STARTED_DATE') {
-        const dateA = a.created_at || '';
-        const dateB = b.created_at || '';
-        comparison = new Date(dateA).getTime() - new Date(dateB).getTime();
-      } else if (sortField === 'CASE_NUMBER') {
-        const numA = parseInt(a.case_number, 10) || 0;
-        const numB = parseInt(b.case_number, 10) || 0;
-        comparison = numA - numB;
-      } else if (sortField === 'STATUS') {
-        const sA = (a.status || '').toUpperCase();
-        const sB = (b.status || '').toUpperCase();
-        comparison = sA.localeCompare(sB);
+  const handleOpenSortMenu = () => {
+    setIsFilterDrawerVisible(false);
+    setIsSortDropdownOpen(true);
+    if (
+      !isMobile &&
+      sortBtnRef.current &&
+      typeof (sortBtnRef.current as unknown as { measureInWindow?: unknown })
+        .measureInWindow === 'function'
+    ) {
+      try {
+        (
+          sortBtnRef.current as unknown as {
+            measureInWindow: (
+              cb: (x: number, y: number, w: number, h: number) => void
+            ) => void;
+          }
+        ).measureInWindow((x, y, _w, h) => {
+          if (typeof y === 'number' && typeof h === 'number') {
+            setSortMenuCoords({ x, y: y + h + 4 });
+          }
+        });
+      } catch {
+        // fallback when measureInWindow is unavailable
       }
-      return sortAsc ? comparison : -comparison;
-    });
+    }
+  };
 
-    return result;
-  }, [cases, searchQuery, activeFilter, sortField, sortAsc]);
+  // Shared real search, multi-filter, and multi-sort pipeline
+  const filteredCases = useMemo(
+    () => filterAndSortCases(cases, searchQuery, advancedFilters, sortBy, sortAsc),
+    [cases, searchQuery, advancedFilters, sortBy, sortAsc]
+  );
+
+  const handleExportCsv = async () => {
+    if (isExportingCsv) return;
+    try {
+      setIsExportingCsv(true);
+      if (!filteredCases || filteredCases.length === 0) {
+        const emptyMessage =
+          cases.length === 0
+            ? t(
+                'export.noCasesInDocket',
+                'No cases in your docket yet. Import cases first to export CSV.'
+              )
+            : t('export.emptyRecords', 'No cases match your current filters to export.');
+        showToast(emptyMessage, 'warning');
+        return;
+      }
+      const dateStamp = new Date().toISOString().slice(0, 10);
+      const filename = `APHC_My_Cases_${dateStamp}.csv`;
+      const result = exportCasesToCsvFile(filteredCases, filename);
+      if (result.success) {
+        showToast(
+          t(
+            'export.success',
+            `Exported ${result.count} case record(s) to ${result.filename}`
+          ),
+          'success'
+        );
+      } else {
+        showToast(
+          result.error || t('export.failed', 'Failed to generate CSV export.'),
+          'error'
+        );
+      }
+    } catch {
+      showToast(t('export.exportFailed', 'Failed to generate CSV export.'), 'error');
+    } finally {
+      setIsExportingCsv(false);
+    }
+  };
+
+  const handleClearAllFilters = () => {
+    setSearchQuery('');
+    setDebouncedSearch('');
+    setAdvancedFilters(DEFAULT_FILTERS);
+    setCurrentPage(1);
+  };
 
   // Pagination calculation
   const totalPages = Math.max(1, Math.ceil(filteredCases.length / PAGE_SIZE));
+  const currentPageSafe = Math.min(Math.max(1, currentPage), totalPages);
   const paginatedCases = useMemo(() => {
-    const start = (currentPage - 1) * PAGE_SIZE;
+    const start = (currentPageSafe - 1) * PAGE_SIZE;
     return filteredCases.slice(start, start + PAGE_SIZE);
-  }, [filteredCases, currentPage]);
+  }, [filteredCases, currentPageSafe]);
 
   const toggleExpandRow = (id: number) => {
     setExpandedRowId(prev => (prev === id ? null : id));
@@ -368,9 +407,11 @@ export default function DashboardScreen() {
     status?: string
   ): 'warning' | 'success' | 'secondary' | 'info' => {
     const s = (status || '').toUpperCase();
-    if (s === 'PENDING' || s === 'ACTIVE') return 'warning';
-    if (s === 'DISPOSED' || s === 'CLOSED') return 'success';
-    if (s === 'ADJOURNED') return 'secondary';
+    if (s.includes('DISPOSED') || s.includes('CLOSED') || s.includes('JUDGMENT')) {
+      return 'success';
+    }
+    if (s.includes('ADJOURN')) return 'secondary';
+    if (s.includes('PENDING') || s === 'ACTIVE' || s === 'UPCOMING') return 'warning';
     return 'info';
   };
 
@@ -384,11 +425,122 @@ export default function DashboardScreen() {
   const chamber =
     user?.profile?.chamber_address || 'High Court of Andhra Pradesh, Amaravati';
 
+  const renderFilterButton = (fullWidth: boolean) => {
+    const isActive = activeFilterCount > 0;
+    return (
+      <TouchableOpacity
+        style={[
+          styles.toolbarBtn,
+          fullWidth && styles.mobileGridBtn,
+          isActive && styles.toolbarBtnActive,
+        ]}
+        onPress={handleOpenFilterDrawer}
+        activeOpacity={0.75}
+        accessibilityRole="button"
+        accessibilityLabel={
+          isActive ? `Filter cases, ${activeFilterCount} active` : 'Filter cases'
+        }
+        testID="case-filter-btn"
+      >
+        <AppIcon
+          name="filter"
+          size={15}
+          color={isActive ? Colors.primary : Colors.text.secondary}
+        />
+        <Text
+          style={[styles.toolbarBtnText, isActive && styles.toolbarBtnTextActive]}
+          numberOfLines={1}
+        >
+          {t('cases.filterButton', 'Filter')}
+        </Text>
+        {isActive && (
+          <View style={styles.filterCountBadge} testID="dashboard-filter-count">
+            <Text style={styles.filterCountBadgeText}>{activeFilterCount}</Text>
+          </View>
+        )}
+      </TouchableOpacity>
+    );
+  };
+
+  const renderSortButton = (fullWidth: boolean) => (
+    <View
+      ref={sortBtnRef}
+      collapsable={false}
+      style={fullWidth ? styles.mobileGridCell : styles.desktopBtnWrap}
+    >
+      <TouchableOpacity
+        style={[styles.toolbarBtn, fullWidth && styles.mobileGridBtn]}
+        onPress={handleOpenSortMenu}
+        activeOpacity={0.75}
+        accessibilityRole="button"
+        accessibilityLabel={`Sort cases: ${getSortButtonLabel(sortBy, sortAsc)}`}
+        testID="case-sort-btn"
+      >
+        <AppIcon name="sliders" size={15} color={Colors.text.secondary} />
+        <Text style={styles.toolbarBtnText} numberOfLines={1}>
+          {getSortButtonLabel(sortBy, sortAsc)}
+        </Text>
+        <AppIcon name="chevron-down" size={14} color={Colors.text.muted} />
+      </TouchableOpacity>
+    </View>
+  );
+
+  const renderImportButton = (fullWidth: boolean) => (
+    <TouchableOpacity
+      style={[styles.toolbarBtn, styles.importPdfBtn, fullWidth && styles.mobileGridBtn]}
+      onPress={() => setIsPdfImportVisible(true)}
+      activeOpacity={0.8}
+      accessibilityRole="button"
+      accessibilityLabel="Import Files"
+      testID="case-pdf-import-btn"
+    >
+      <AppIcon name="upload" size={15} color="#FFFFFF" />
+      <Text style={styles.importPdfBtnText} numberOfLines={1}>
+        {isDesktop ? 'Import Files' : 'Import'}
+      </Text>
+    </TouchableOpacity>
+  );
+
+  const renderExportButton = (fullWidth: boolean) => (
+    <TouchableOpacity
+      style={[
+        styles.toolbarBtn,
+        styles.exportCsvBtn,
+        fullWidth && styles.mobileGridBtn,
+        isExportingCsv && styles.toolbarBtnDisabled,
+      ]}
+      onPress={handleExportCsv}
+      disabled={isExportingCsv}
+      activeOpacity={0.75}
+      accessibilityRole="button"
+      accessibilityLabel="Export CSV"
+      testID="case-csv-export-btn"
+    >
+      <AppIcon
+        name="download"
+        size={15}
+        color={isExportingCsv ? Colors.text.muted : Colors.primary}
+      />
+      <Text
+        style={[
+          styles.exportCsvBtnText,
+          isExportingCsv && styles.exportCsvBtnTextDisabled,
+        ]}
+        numberOfLines={1}
+      >
+        {isExportingCsv ? '...' : isDesktop ? 'Export CSV' : 'Export'}
+      </Text>
+    </TouchableOpacity>
+  );
+
   return (
     <ScreenContainer testID="dashboard-screen">
       <ScrollView
         style={styles.mainScroll}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          isMobile && styles.scrollContentMobile,
+        ]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl refreshing={Boolean(isRefreshing)} onRefresh={onRefresh} />
@@ -418,7 +570,7 @@ export default function DashboardScreen() {
 
         {/* 1. Dashboard Header */}
         <View style={styles.headerContainer}>
-          <View style={styles.headerLeft}>
+          <View style={[styles.headerLeft, isMobile && styles.headerLeftMobile]}>
             <View style={styles.courtBadgeRow}>
               <View style={styles.courtDot} />
               <Text style={styles.courtSubtitle}>APHC AMARAVATI</Text>
@@ -506,7 +658,10 @@ export default function DashboardScreen() {
         <View style={styles.statsContainer}>
           {/* Total Cases */}
           <TouchableOpacity
-            style={[styles.statCard, activeFilter === 'ALL' && styles.statCardActive]}
+            style={[
+              styles.statCard,
+              advancedFilters.status === 'ALL' && styles.statCardActive,
+            ]}
             onPress={() => handleStatCardClick('ALL')}
             accessibilityRole="button"
             testID="stat-total-cases"
@@ -517,7 +672,10 @@ export default function DashboardScreen() {
 
           {/* Pending */}
           <TouchableOpacity
-            style={[styles.statCard, activeFilter === 'PENDING' && styles.statCardActive]}
+            style={[
+              styles.statCard,
+              advancedFilters.status === 'PENDING' && styles.statCardActive,
+            ]}
             onPress={() => handleStatCardClick('PENDING')}
             accessibilityRole="button"
             testID="stat-pending-cases"
@@ -530,7 +688,7 @@ export default function DashboardScreen() {
           <TouchableOpacity
             style={[
               styles.statCard,
-              activeFilter === 'DISPOSED' && styles.statCardActive,
+              advancedFilters.status === 'DISPOSED' && styles.statCardActive,
             ]}
             onPress={() => handleStatCardClick('DISPOSED')}
             accessibilityRole="button"
@@ -544,7 +702,7 @@ export default function DashboardScreen() {
           <TouchableOpacity
             style={[
               styles.statCard,
-              activeFilter === 'ADJOURNED' && styles.statCardActive,
+              advancedFilters.status === 'ADJOURNED' && styles.statCardActive,
             ]}
             onPress={() => handleStatCardClick('ADJOURNED')}
             accessibilityRole="button"
@@ -576,12 +734,14 @@ export default function DashboardScreen() {
           </View>
         )}
 
-        {/* 3 & 4. Search, Filter, Import Controls & Main Cases Table */}
+        {/* 3 & 4. Responsive My Cases Toolbar & Main Cases Table */}
         <Card style={styles.tableCard} testID="main-cases-table">
           {/* Controls Bar Above Table */}
-          <View style={styles.controlsBar}>
-            {/* Search Input */}
-            <View style={styles.searchContainer}>
+          <View style={[styles.controlsBar, isDesktop && styles.controlsBarDesktop]}>
+            {/* Row 1: Full-width Search Input */}
+            <View
+              style={[styles.searchContainer, isDesktop && styles.searchContainerDesktop]}
+            >
               <AppIcon name="search" size={16} color="#64748B" />
               <TextInput
                 style={styles.searchInput}
@@ -590,156 +750,99 @@ export default function DashboardScreen() {
                   setSearchQuery(text);
                   setCurrentPage(1);
                 }}
-                placeholder="Search by case number, petitioner, respondent..."
+                placeholder="Search by case number, petitioner, respondent"
                 placeholderTextColor="#94A3B8"
+                returnKeyType="search"
                 testID="case-search-input"
               />
               {searchQuery.length > 0 && (
                 <TouchableOpacity
                   onPress={() => {
                     setSearchQuery('');
+                    setDebouncedSearch('');
                     setCurrentPage(1);
                   }}
                   style={styles.clearSearchBtn}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  accessibilityRole="button"
                   accessibilityLabel="Clear search"
+                  testID="case-search-clear-btn"
                 >
-                  <AppIcon name="x" size={14} color="#64748B" />
+                  <AppIcon name="x" size={15} color="#64748B" />
                 </TouchableOpacity>
               )}
             </View>
 
-            {/* Action Buttons: Filter, Sort, Import */}
-            <View style={styles.controlButtonsRow}>
-              {/* Filter Tabs / Toggle */}
-              <TouchableOpacity
+            {/* Mobile: 2-Column Grid (Row 2: Filter & Sort | Row 3: Import & Export) */}
+            {isMobile ? (
+              <View
+                style={styles.mobileControlsGrid}
+                testID="dashboard-mobile-toolbar-grid"
+              >
+                <View style={styles.mobileGridRow}>
+                  <View style={styles.mobileGridCell}>{renderFilterButton(true)}</View>
+                  {renderSortButton(true)}
+                </View>
+                <View style={styles.mobileGridRow}>
+                  <View style={styles.mobileGridCell}>{renderImportButton(true)}</View>
+                  <View style={styles.mobileGridCell}>{renderExportButton(true)}</View>
+                </View>
+              </View>
+            ) : (
+              /* Tablet & Desktop: Preserved Single-Row Controls */
+              <View
                 style={[
-                  styles.controlBtn,
-                  activeFilter !== 'ALL' && styles.controlBtnActive,
+                  styles.controlsRowDesktop,
+                  !isDesktop && styles.controlsRowTablet,
                 ]}
-                onPress={() => {
-                  const filterCycles: FilterType[] = [
-                    'ALL',
-                    'PENDING',
-                    'DISPOSED',
-                    'ADJOURNED',
-                    'WITH_JUDGMENT',
-                    'UPCOMING',
-                  ];
-                  const currentIndex = filterCycles.indexOf(activeFilter);
-                  const nextIndex = (currentIndex + 1) % filterCycles.length;
-                  setActiveFilter(filterCycles[nextIndex]);
-                  setCurrentPage(1);
-                }}
-                accessibilityRole="button"
-                testID="case-filter-btn"
               >
-                <AppIcon
-                  name="filter"
-                  size={14}
-                  color={activeFilter !== 'ALL' ? '#0284C7' : '#475569'}
-                />
-                <Text
-                  style={[
-                    styles.controlBtnText,
-                    activeFilter !== 'ALL' && styles.controlBtnTextActive,
-                  ]}
-                >
-                  {activeFilter === 'ALL'
-                    ? 'All Cases'
-                    : activeFilter === 'WITH_JUDGMENT'
-                      ? 'With Judgment'
-                      : activeFilter === 'UPCOMING'
-                        ? 'Upcoming Hearing'
-                        : activeFilter.charAt(0) + activeFilter.slice(1).toLowerCase()}
-                </Text>
-              </TouchableOpacity>
-
-              {/* Sorting Button */}
-              <TouchableOpacity
-                style={styles.controlBtn}
-                onPress={() => {
-                  const fields: SortField[] = [
-                    'NEXT_HEARING',
-                    'STARTED_DATE',
-                    'CASE_NUMBER',
-                    'STATUS',
-                  ];
-                  const currentIdx = fields.indexOf(sortField);
-                  if (sortAsc) {
-                    setSortAsc(false);
-                    const nextIdx = (currentIdx + 1) % fields.length;
-                    setSortField(fields[nextIdx]);
-                  } else {
-                    setSortAsc(true);
-                  }
-                  setCurrentPage(1);
-                }}
-                accessibilityRole="button"
-                testID="case-sort-btn"
-              >
-                <AppIcon
-                  name={sortAsc ? 'chevron-up' : 'chevron-down'}
-                  size={14}
-                  color="#475569"
-                />
-                <Text style={styles.controlBtnText}>
-                  Sort: {sortField.replace('_', ' ')}
-                </Text>
-              </TouchableOpacity>
-
-              {/* Responsive Import Files Button */}
-              <TouchableOpacity
-                style={[styles.controlBtn, styles.importPdfBtn]}
-                onPress={() => setIsPdfImportVisible(true)}
-                accessibilityRole="button"
-                accessibilityLabel="Import Files"
-                testID="case-pdf-import-btn"
-              >
-                <AppIcon name="upload" size={14} color="#FFFFFF" />
-                <Text style={styles.importPdfBtnText}>
-                  {width < 360 ? 'Import' : isDesktop ? 'Import Files' : 'Import'}
-                </Text>
-              </TouchableOpacity>
-            </View>
+                <View style={!isDesktop ? styles.mobileGridCell : styles.desktopBtnWrap}>
+                  {renderFilterButton(!isDesktop)}
+                </View>
+                {renderSortButton(!isDesktop)}
+                <View style={!isDesktop ? styles.mobileGridCell : styles.desktopBtnWrap}>
+                  {renderImportButton(!isDesktop)}
+                </View>
+                <View style={!isDesktop ? styles.mobileGridCell : styles.desktopBtnWrap}>
+                  {renderExportButton(!isDesktop)}
+                </View>
+              </View>
+            )}
           </View>
 
-          {/* Quick Filter Pill Chips */}
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={styles.pillsScroll}
-            contentContainerStyle={styles.pillsContainer}
-          >
-            {(
-              [
-                { key: 'ALL', label: 'All Cases' },
-                { key: 'PENDING', label: 'Pending' },
-                { key: 'DISPOSED', label: 'Disposed' },
-                { key: 'ADJOURNED', label: 'Adjourned' },
-                { key: 'WITH_JUDGMENT', label: 'With Judgment' },
-                { key: 'UPCOMING', label: 'Upcoming Hearing' },
-              ] as { key: FilterType; label: string }[]
-            ).map(pill => {
-              const isSelected = activeFilter === pill.key;
-              return (
-                <TouchableOpacity
-                  key={pill.key}
-                  style={[styles.pillChip, isSelected && styles.pillChipActive]}
-                  onPress={() => {
-                    setActiveFilter(pill.key);
-                    setCurrentPage(1);
-                  }}
-                  testID={`filter-pill-${pill.key.toLowerCase()}`}
-                >
-                  <Text
-                    style={[styles.pillChipText, isSelected && styles.pillChipTextActive]}
+          {/* Applied Filter Summary Strip (rendered ONLY when filters are actively applied) */}
+          {activeFilterChips.length > 0 && (
+            <View
+              style={styles.activeFiltersStrip}
+              testID="dashboard-active-filters-strip"
+            >
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.activeFiltersContent}
+              >
+                <Text style={styles.activeFiltersLabel}>Active:</Text>
+                {activeFilterChips.map(chip => (
+                  <TouchableOpacity
+                    key={chip.key}
+                    style={styles.activeFilterChip}
+                    onPress={chip.onRemove}
+                    testID={`dashboard-active-chip-${chip.key}`}
                   >
-                    {pill.label}
-                  </Text>
+                    <Text style={styles.activeFilterChipText}>{chip.label}</Text>
+                    <AppIcon name="x" size={12} color={Colors.primary} />
+                  </TouchableOpacity>
+                ))}
+                <TouchableOpacity
+                  onPress={handleClearAllFilters}
+                  style={styles.clearAllFiltersLink}
+                  testID="dashboard-clear-all-filters"
+                >
+                  <Text style={styles.clearAllFiltersLinkText}>Clear All</Text>
                 </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
+              </ScrollView>
+            </View>
+          )}
 
           {/* Main Table Content */}
           {isLoading ? (
@@ -752,17 +855,13 @@ export default function DashboardScreen() {
               <AppIcon name="files" size={36} color="#94A3B8" />
               <Text style={styles.emptyStateTitle}>No cases match your filters</Text>
               <Text style={styles.emptyStateSub}>
-                Try adjusting your search query or reset your active status filters.
+                Try adjusting your search query or reset your active filters.
               </Text>
-              {(searchQuery.length > 0 || activeFilter !== 'ALL') && (
+              {(searchQuery.length > 0 || activeFilterCount > 0) && (
                 <Button
                   title="Reset Filters"
                   variant="outline"
-                  onPress={() => {
-                    setSearchQuery('');
-                    setActiveFilter('ALL');
-                    setCurrentPage(1);
-                  }}
+                  onPress={handleClearAllFilters}
                   style={styles.resetFiltersBtn}
                 />
               )}
@@ -986,9 +1085,10 @@ export default function DashboardScreen() {
                           ]}
                         >
                           {item.judgment_date ||
+                          item.status_details?.has_judgment ||
                           item.status_details?.judgment_date ||
                           item.latest_judgment ||
-                          item.status === 'DISPOSED' ? (
+                          (item.judgments && item.judgments.length > 0) ? (
                             <TouchableOpacity
                               style={styles.judgmentActionPill}
                               onPress={e => {
@@ -1003,7 +1103,11 @@ export default function DashboardScreen() {
                               <Text style={styles.judgmentActionPillText}>Certified</Text>
                             </TouchableOpacity>
                           ) : (
-                            <Text style={styles.dateText}>N/A</Text>
+                            <Text style={styles.dateText}>
+                              {getCanonicalCaseStatus(item) === 'DISPOSED'
+                                ? 'Pending'
+                                : 'N/A'}
+                            </Text>
                           )}
                         </View>
                       </TouchableOpacity>
@@ -1132,27 +1236,30 @@ export default function DashboardScreen() {
             <View style={styles.paginationRow}>
               <Text style={styles.paginationText}>
                 Showing{' '}
-                {Math.min((currentPage - 1) * PAGE_SIZE + 1, filteredCases.length)}–
-                {Math.min(currentPage * PAGE_SIZE, filteredCases.length)} of{' '}
+                {Math.min((currentPageSafe - 1) * PAGE_SIZE + 1, filteredCases.length)}–
+                {Math.min(currentPageSafe * PAGE_SIZE, filteredCases.length)} of{' '}
                 {filteredCases.length} cases
               </Text>
               <View style={styles.paginationButtons}>
                 <TouchableOpacity
-                  style={[styles.pageBtn, currentPage === 1 && styles.pageBtnDisabled]}
+                  style={[
+                    styles.pageBtn,
+                    currentPageSafe === 1 && styles.pageBtnDisabled,
+                  ]}
                   onPress={() => setCurrentPage(p => Math.max(1, p - 1))}
-                  disabled={currentPage === 1}
+                  disabled={currentPageSafe === 1}
                   accessibilityLabel="Previous Page"
                   testID="pagination-prev"
                 >
                   <AppIcon
                     name="chevron-left"
                     size={16}
-                    color={currentPage === 1 ? '#CBD5E1' : '#334155'}
+                    color={currentPageSafe === 1 ? '#CBD5E1' : '#334155'}
                   />
                   <Text
                     style={[
                       styles.pageBtnText,
-                      currentPage === 1 && styles.pageBtnTextDisabled,
+                      currentPageSafe === 1 && styles.pageBtnTextDisabled,
                     ]}
                   >
                     Previous
@@ -1162,17 +1269,17 @@ export default function DashboardScreen() {
                 <TouchableOpacity
                   style={[
                     styles.pageBtn,
-                    currentPage === totalPages && styles.pageBtnDisabled,
+                    currentPageSafe === totalPages && styles.pageBtnDisabled,
                   ]}
                   onPress={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                  disabled={currentPage === totalPages}
+                  disabled={currentPageSafe === totalPages}
                   accessibilityLabel="Next Page"
                   testID="pagination-next"
                 >
                   <Text
                     style={[
                       styles.pageBtnText,
-                      currentPage === totalPages && styles.pageBtnTextDisabled,
+                      currentPageSafe === totalPages && styles.pageBtnTextDisabled,
                     ]}
                   >
                     Next
@@ -1180,7 +1287,7 @@ export default function DashboardScreen() {
                   <AppIcon
                     name="chevron-right"
                     size={16}
-                    color={currentPage === totalPages ? '#CBD5E1' : '#334155'}
+                    color={currentPageSafe === totalPages ? '#CBD5E1' : '#334155'}
                   />
                 </TouchableOpacity>
               </View>
@@ -1188,6 +1295,42 @@ export default function DashboardScreen() {
           )}
         </Card>
       </ScrollView>
+
+      {/* Left-Side Slide-In Filter Drawer with Nested Submenus */}
+      <CaseFilterModal
+        testID="dashboard-case-filter-drawer"
+        visible={isFilterDrawerVisible}
+        onClose={() => setIsFilterDrawerVisible(false)}
+        filters={advancedFilters}
+        availableCaseTypes={availableCaseTypes}
+        availableCourts={availableCourts}
+        availableYears={availableYears}
+        onApplyFilters={newFilters => {
+          setAdvancedFilters(newFilters);
+          setCurrentPage(1);
+        }}
+        onClearAll={() => {
+          setAdvancedFilters(DEFAULT_FILTERS);
+          setCurrentPage(1);
+        }}
+      />
+
+      {/* Sort Dropdown (Desktop) / Bottom Sheet (Mobile) */}
+      <SortDropdownMenu
+        testID="dashboard-sort-dropdown-menu"
+        visible={isSortDropdownOpen}
+        onClose={() => setIsSortDropdownOpen(false)}
+        sortBy={sortBy}
+        sortAsc={sortAsc}
+        onSelectSort={(field, asc) => {
+          setSortBy(field);
+          if (typeof asc === 'boolean') {
+            setSortAsc(asc);
+          }
+          setCurrentPage(1);
+        }}
+        anchorPosition={sortMenuCoords}
+      />
 
       {/* Global Voice Assistant Microphone Modal */}
       {isVoiceModalVisible && (
@@ -1223,14 +1366,15 @@ export default function DashboardScreen() {
         />
       )}
 
-      {/* PDF Import Modal */}
+      {/* Document Import Modal */}
       {isPdfImportVisible && (
-        <PdfImportModal
+        <DocumentImportModal
           visible={isPdfImportVisible}
           onClose={() => setIsPdfImportVisible(false)}
           cases={cases}
           onImportSuccess={() => {
             onRefresh();
+            showToast(t('import.successToast', 'Case import completed'), 'success');
           }}
         />
       )}
@@ -1247,6 +1391,10 @@ const styles = StyleSheet.create({
     padding: Spacing.md,
     gap: Spacing.md,
     paddingBottom: Spacing.xl * 2,
+  },
+  scrollContentMobile: {
+    paddingHorizontal: 0,
+    paddingVertical: Spacing.sm,
   },
   offlineBanner: {
     flexDirection: 'row',
@@ -1297,6 +1445,10 @@ const styles = StyleSheet.create({
   headerLeft: {
     flex: 1,
     minWidth: 260,
+  },
+  headerLeftMobile: {
+    minWidth: 0,
+    flexBasis: '100%',
   },
   courtBadgeRow: {
     flexDirection: 'row',
@@ -1503,105 +1655,185 @@ const styles = StyleSheet.create({
     ...Shadows.card,
   },
   controlsBar: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: 'column',
     padding: Spacing.md,
-    gap: Spacing.sm,
+    gap: 10,
     borderBottomWidth: 1,
     borderBottomColor: '#F1F5F9',
   },
+  controlsBarDesktop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
   searchContainer: {
-    flex: 1,
-    minWidth: 240,
+    width: '100%',
+    minWidth: 0,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#F8FAFC',
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: '#CBD5E1',
     borderRadius: Radius.input,
-    paddingHorizontal: 10,
-    height: 38,
+    paddingHorizontal: 12,
+    height: 44,
     gap: 8,
+  },
+  searchContainerDesktop: {
+    flex: 1,
+    maxWidth: 460,
+    width: undefined,
+    height: 42,
   },
   searchInput: {
     flex: 1,
+    minWidth: 0,
     fontSize: 13,
     color: '#0F172A',
     paddingVertical: 0,
+    height: '100%',
   },
   clearSearchBtn: {
     padding: 4,
   },
-  controlButtonsRow: {
+  mobileControlsGrid: {
+    width: '100%',
+    gap: 10,
+  },
+  mobileGridRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: 6,
+    gap: 10,
+    width: '100%',
   },
-  controlBtn: {
+  mobileGridCell: {
+    flex: 1,
+    minWidth: 0,
+  },
+  mobileGridBtn: {
+    width: '100%',
+    height: 44,
+    paddingHorizontal: 10,
+  },
+  controlsRowDesktop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  controlsRowTablet: {
+    width: '100%',
+    gap: 10,
+  },
+  desktopBtnWrap: {
+    flexShrink: 0,
+  },
+  toolbarBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    height: 42,
+    borderRadius: Radius.button,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    backgroundColor: '#FFFFFF',
+  },
+  toolbarBtnActive: {
+    borderColor: Colors.primary,
+    backgroundColor: Colors.surfaceBlue,
+  },
+  toolbarBtnDisabled: {
+    opacity: 0.6,
+  },
+  toolbarBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#0F172A',
+    flexShrink: 1,
+  },
+  toolbarBtnTextActive: {
+    color: Colors.primary,
+    fontWeight: '700',
+  },
+  filterCountBadge: {
+    minWidth: 20,
+    height: 20,
+    paddingHorizontal: 5,
+    borderRadius: 10,
+    backgroundColor: Colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  filterCountBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  importPdfBtn: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
+  },
+  importPdfBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  exportCsvBtn: {
+    backgroundColor: '#FFFFFF',
+    borderColor: Colors.primary,
+  },
+  exportCsvBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: Colors.primary,
+  },
+  exportCsvBtnTextDisabled: {
+    color: Colors.text.muted,
+  },
+  activeFiltersStrip: {
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+    backgroundColor: '#F8FAFC',
+  },
+  activeFiltersContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 8,
+    gap: 8,
+  },
+  activeFiltersLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.text.muted,
+    textTransform: 'uppercase',
+  },
+  activeFilterChip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
     paddingHorizontal: 10,
-    height: 38,
-    borderRadius: Radius.button,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    backgroundColor: '#FFFFFF',
-    flexShrink: 0,
-  },
-  controlBtnActive: {
-    borderColor: '#0284C7',
-    backgroundColor: '#F0F9FF',
-  },
-  controlBtnText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#475569',
-  },
-  controlBtnTextActive: {
-    color: '#0284C7',
-  },
-  importPdfBtn: {
-    backgroundColor: '#1E3A8A',
-    borderColor: '#1E3A8A',
-  },
-  importPdfBtnText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-  pillsScroll: {
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
-  },
-  pillsContainer: {
-    paddingHorizontal: Spacing.md,
-    paddingVertical: 8,
-    gap: 6,
-  },
-  pillChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingVertical: 5,
     borderRadius: Radius.pill,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: Colors.surfaceBlue,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: Colors.borderStrong,
   },
-  pillChipActive: {
-    backgroundColor: '#EFF6FF',
-    borderColor: '#0284C7',
-  },
-  pillChipText: {
+  activeFilterChipText: {
     fontSize: 12,
-    color: '#64748B',
-    fontWeight: '500',
-  },
-  pillChipTextActive: {
-    color: '#0284C7',
     fontWeight: '600',
+    color: Colors.primary,
+  },
+  clearAllFiltersLink: {
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+  },
+  clearAllFiltersLinkText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.danger,
   },
   tableScrollHorizontal: {
     width: '100%',

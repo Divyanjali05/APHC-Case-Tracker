@@ -120,9 +120,15 @@ export const pushNotificationService = {
    * Deactivate push token registration on the backend upon advocate logout.
    */
   async deactivatePushNotifications(all: boolean = false): Promise<boolean> {
+    if (Platform.OS === 'web') {
+      return false;
+    }
     try {
       const token = await SecureStore.getItemAsync(LAST_TOKEN_KEY);
       const deviceId = await SecureStore.getItemAsync(DEVICE_ID_KEY);
+      if (!token && !deviceId && !all) {
+        return false;
+      }
 
       const payload: DeviceDeactivationPayload = {
         all,

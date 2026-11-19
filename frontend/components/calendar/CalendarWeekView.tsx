@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React from 'react';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { Colors } from '../../constants/colors';
 import { Badge } from '../common/Badge';
@@ -9,7 +9,15 @@ import {
   AgendaHearingItem,
   AgendaReminderItem,
   AgendaResponse,
+  AgendaTokenItem,
 } from '../../types';
+import {
+  formatDisplayTime,
+  formatLongDate,
+  getWeekDatesLocal,
+  isLocalToday,
+  parseLocalDate,
+} from '../../utils/calendarDate';
 
 export interface CalendarWeekViewProps {
   agenda: AgendaResponse;
@@ -25,44 +33,42 @@ export const CalendarWeekView: React.FC<CalendarWeekViewProps> = ({
   onSelectEvent,
 }) => {
   const { t } = useTranslation();
-  const [activeDate, setActiveDate] = useState<string>(selectedDate);
 
-  // Compute 7 days from start_date
-  const startDate = agenda.start_date ? new Date(agenda.start_date) : new Date();
-  const days: { dateStr: string; dayName: string; dayNum: number }[] = [];
-
-  for (let i = 0; i < 7; i++) {
-    const d = new Date(startDate);
-    d.setDate(startDate.getDate() + i);
-    const dateStr = d.toISOString().split('T')[0];
-    const dayName = d.toLocaleDateString(undefined, { weekday: 'short' });
-    days.push({
+  // Compute 7 local dates cleanly (zero UTC shift, always synced with selectedDate)
+  const week = getWeekDatesLocal(agenda.start_date || selectedDate);
+  const days = week.dates.map(dateStr => {
+    const d = parseLocalDate(dateStr);
+    return {
       dateStr,
-      dayName,
+      dayName: d.toLocaleDateString('en-US', { weekday: 'short' }),
       dayNum: d.getDate(),
-    });
-  }
+      isToday: isLocalToday(dateStr),
+    };
+  });
 
   const eventsByDate = agenda.events_by_date || {};
-  const currentDayEvents: AgendaEventUnion[] = eventsByDate[activeDate] || [];
+  const currentDayEvents: AgendaEventUnion[] = eventsByDate[selectedDate] || [];
 
   return (
     <View style={styles.container} testID="calendar-week-view">
       {/* 7-day strip */}
       <View style={styles.weekStrip}>
         {days.map(item => {
-          const isSelected = item.dateStr === activeDate;
+          const isSelected = item.dateStr === selectedDate;
           const count = (eventsByDate[item.dateStr] || []).length;
 
           return (
             <TouchableOpacity
               key={item.dateStr}
               testID={`week-day-${item.dateStr}`}
-              style={[styles.dayColumn, isSelected && styles.dayColumnActive]}
-              onPress={() => {
-                setActiveDate(item.dateStr);
-                onSelectDate(item.dateStr);
-              }}
+              style={[
+                styles.dayColumn,
+                item.isToday && !isSelected && styles.dayColumnToday,
+                isSelected && styles.dayColumnActive,
+              ]}
+              onPress={() => onSelectDate(item.dateStr)}
+              accessibilityRole="button"
+              accessibilityState={{ selected: isSelected }}
             >
               <Text style={[styles.dayName, isSelected && styles.dayTextActive]}>
                 {item.dayName}
@@ -83,10 +89,10 @@ export const CalendarWeekView: React.FC<CalendarWeekViewProps> = ({
       </View>
 
       {/* Events List for selected day */}
-      <ScrollView style={styles.eventsScroll}>
+      <View style={styles.eventsContainer}>
         <Text style={styles.selectedDayTitle}>
-          {t('calendar.agenda_for', 'Agenda for')} {activeDate} ({currentDayEvents.length}
-          )
+          {t('calendar.agenda_for', 'Agenda for')} {formatLongDate(selectedDate)} (
+          {currentDayEvents.length})
         </Text>
 
         {currentDayEvents.length === 0 ? (
@@ -108,7 +114,7 @@ export const CalendarWeekView: React.FC<CalendarWeekViewProps> = ({
                 key={`${ev.event_type}-${ev.id}-${index}`}
                 testID={`week-event-${ev.event_type.toLowerCase()}-${ev.id}`}
                 onPress={() => onSelectEvent(ev)}
-                activeOpacity={0.7}
+                activeOpacity={0.75}
               >
                 <Card style={styles.eventCard}>
                   <View style={styles.cardHeader}>
@@ -119,19 +125,27 @@ export const CalendarWeekView: React.FC<CalendarWeekViewProps> = ({
                     />
                   </View>
 
-                  {isHearing && (ev as AgendaHearingItem).court_hall_number ? (
+                  {isHearing && (
                     <Text style={styles.detailText}>
-                      Hall {(ev as AgendaHearingItem).court_hall_number} •{' '}
-                      {(ev as AgendaHearingItem).hearing_time || 'All Day'}
+                      Hall {(ev as AgendaHearingItem).court_hall_number || '—'} •{' '}
+                      {formatDisplayTime((ev as AgendaHearingItem).hearing_time)}
                     </Text>
-                  ) : null}
+                  )}
+
+                  {isToken && (
+                    <Text style={styles.detailText}>
+                      Hall {(ev as AgendaTokenItem).court_hall_number} •{' '}
+                      {(ev as AgendaTokenItem).status}
+                    </Text>
+                  )}
 
                   {!isHearing && !isToken && (ev as AgendaReminderItem).due_date ? (
                     <Text style={styles.detailText}>
                       Due:{' '}
-                      {(ev as AgendaReminderItem).due_date
-                        .replace('T', ' ')
-                        .substring(0, 16)}
+                      {formatDisplayTime(
+                        (ev as AgendaReminderItem).time ||
+                          (ev as AgendaReminderItem).due_date
+                      )}
                     </Text>
                   ) : null}
                 </Card>
@@ -139,7 +153,7 @@ export const CalendarWeekView: React.FC<CalendarWeekViewProps> = ({
             );
           })
         )}
-      </ScrollView>
+      </View>
     </View>
   );
 };
@@ -150,30 +164,38 @@ const styles = StyleSheet.create({
   },
   weekStrip: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
+    justifyContent: 'space-between',
     backgroundColor: Colors.surface,
-    paddingVertical: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 10,
+    borderTopWidth: 1,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
+    borderColor: Colors.border,
+    marginTop: 8,
   },
   dayColumn: {
+    flex: 1,
     alignItems: 'center',
     paddingVertical: 8,
-    paddingHorizontal: 8,
+    paddingHorizontal: 2,
     borderRadius: 8,
-    minWidth: 42,
+  },
+  dayColumnToday: {
+    backgroundColor: Colors.surfaceBlue,
+    borderWidth: 1,
+    borderColor: Colors.infoBorder,
   },
   dayColumnActive: {
     backgroundColor: Colors.primary,
   },
   dayName: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
     color: Colors.text.secondary,
     marginBottom: 4,
   },
   dayNum: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '700',
     color: Colors.text.primary,
   },
@@ -184,30 +206,30 @@ const styles = StyleSheet.create({
     marginTop: 4,
     backgroundColor: Colors.gold,
     borderRadius: 10,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    minWidth: 20,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    minWidth: 18,
     alignItems: 'center',
   },
   eventDotText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
     color: Colors.text.white,
   },
   eventDotPlaceholder: {
-    height: 14,
+    height: 16,
     marginTop: 4,
   },
-  eventsScroll: {
-    flex: 1,
+  eventsContainer: {
     padding: 16,
   },
   selectedDayTitle: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '700',
     color: Colors.text.secondary,
     marginBottom: 12,
     textTransform: 'uppercase',
+    letterSpacing: 0.4,
   },
   eventCard: {
     marginBottom: 10,
@@ -234,11 +256,12 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   emptyContainer: {
-    paddingVertical: 40,
+    paddingVertical: 28,
     alignItems: 'center',
   },
   emptyText: {
     color: Colors.text.muted,
-    fontSize: 14,
+    fontSize: 13,
+    textAlign: 'center',
   },
 });

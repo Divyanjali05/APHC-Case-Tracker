@@ -152,15 +152,19 @@ export const tokenStorage = {
 
   async clearTokens(): Promise<void> {
     await this.setDemoMode(false);
-    await AsyncStorage.removeItem(USER_SNAPSHOT_KEY);
+    await AsyncStorage.removeItem(USER_SNAPSHOT_KEY).catch(() => {});
     if (Platform.OS === 'web') {
-      await AsyncStorage.removeItem(ACCESS_TOKEN_KEY);
-      await AsyncStorage.removeItem(REFRESH_TOKEN_KEY);
-      await AsyncStorage.removeItem(USER_ENROLLMENT_KEY);
+      await Promise.all([
+        AsyncStorage.removeItem(ACCESS_TOKEN_KEY).catch(() => {}),
+        AsyncStorage.removeItem(REFRESH_TOKEN_KEY).catch(() => {}),
+        AsyncStorage.removeItem(USER_ENROLLMENT_KEY).catch(() => {}),
+      ]);
     } else {
-      await SecureStore.deleteItemAsync(ACCESS_TOKEN_KEY);
-      await SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY);
-      await AsyncStorage.removeItem(USER_ENROLLMENT_KEY);
+      await Promise.all([
+        SecureStore.deleteItemAsync(ACCESS_TOKEN_KEY).catch(() => {}),
+        SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY).catch(() => {}),
+        AsyncStorage.removeItem(USER_ENROLLMENT_KEY).catch(() => {}),
+      ]);
     }
   },
 };

@@ -1,3 +1,5 @@
+import os
+
 from decouple import config
 
 from .base import *  # noqa: F403
@@ -44,8 +46,16 @@ else:
 CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_CREDENTIALS = True
 
-# Console email backend for development
-EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+# Gmail SMTP configuration
+EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+EMAIL_HOST = "smtp.gmail.com"
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+
+EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER")
+EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD")
+
+DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 
 # Execute Celery tasks synchronously in development and automated testing
 CELERY_TASK_ALWAYS_EAGER = True

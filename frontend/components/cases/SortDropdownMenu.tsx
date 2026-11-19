@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,11 +8,12 @@ import {
   TouchableOpacity,
   ScrollView,
   useWindowDimensions,
+  Platform,
 } from 'react-native';
 import { AppIcon, AppIconName } from '../common/AppIcon';
 import { Colors } from '../../constants/colors';
 import { Radius, Shadows, Spacing } from '../../constants/theme';
-import { SortType } from '../../app/(tabs)/cases';
+import { SortType } from '../../utils/caseFiltering';
 
 export interface SortDropdownMenuProps {
   visible: boolean;
@@ -34,9 +35,15 @@ interface SortOptionItem {
 
 const SORT_OPTIONS: SortOptionItem[] = [
   {
+    key: 'CASE_NUMBER',
+    label: 'Case Number',
+    sublabel: 'Type & registry identifier',
+    icon: 'hash',
+  },
+  {
     key: 'CASE_DATE',
-    label: 'Case Date (Filing)',
-    sublabel: 'Filing registration date',
+    label: 'Filing Date',
+    sublabel: 'Filing year & registration date',
     icon: 'calendar',
   },
   {
@@ -46,32 +53,20 @@ const SORT_OPTIONS: SortOptionItem[] = [
     icon: 'clock',
   },
   {
-    key: 'JUDGMENT_DATE',
-    label: 'Judgment Date',
-    sublabel: 'Certified pronouncement date',
-    icon: 'file-text',
-  },
-  {
     key: 'CLOSED_DATE',
     label: 'Closed Date',
     sublabel: 'Disposal completion date',
     icon: 'check-circle',
   },
   {
-    key: 'CASE_NAME',
-    label: 'Case Name',
-    sublabel: 'Petitioner vs Respondent',
-    icon: 'user',
-  },
-  {
-    key: 'CASE_NUMBER',
-    label: 'Case Number',
-    sublabel: 'Type & registry identifier',
-    icon: 'hash',
+    key: 'JUDGMENT_DATE',
+    label: 'Judgment Date',
+    sublabel: 'Certified pronouncement date',
+    icon: 'file-text',
   },
   {
     key: 'RECENTLY_UPDATED',
-    label: 'Recently Updated',
+    label: 'Last Updated',
     sublabel: 'Latest docket modifications',
     icon: 'refresh',
   },
@@ -88,9 +83,36 @@ export const SortDropdownMenu: React.FC<SortDropdownMenuProps> = ({
 }) => {
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
 
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !visible) return;
+    const prevOverflow =
+      typeof document !== 'undefined' ? document.body.style.overflow : '';
+    if (typeof document !== 'undefined') {
+      document.body.style.overflow = 'hidden';
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onClose();
+      }
+    };
+    if (typeof window !== 'undefined') {
+      window.addEventListener('keydown', handleKeyDown);
+    }
+    return () => {
+      if (typeof document !== 'undefined') {
+        document.body.style.overflow = prevOverflow;
+      }
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('keydown', handleKeyDown);
+      }
+    };
+  }, [visible, onClose]);
+
   if (!visible) return null;
 
-  const menuWidth = Math.min(270, windowWidth - 24);
+  const isMobile = windowWidth < 768;
+  const menuWidth = Math.min(290, windowWidth - 24);
   const leftPos = anchorPosition?.x
     ? Math.max(12, Math.min(anchorPosition.x, windowWidth - menuWidth - 12))
     : 12;
@@ -100,12 +122,12 @@ export const SortDropdownMenu: React.FC<SortDropdownMenuProps> = ({
     <Modal
       visible={visible}
       transparent
-      animationType="fade"
+      animationType={isMobile ? 'slide' : 'fade'}
       onRequestClose={onClose}
       testID={testID}
     >
-      <View style={styles.modalRoot}>
-        {/* Outside click backdrop */}
+      <View style={[styles.modalRoot, isMobile && styles.modalRootMobile]}>
+        {/* Outside click dismiss backdrop */}
         <Pressable
           style={StyleSheet.absoluteFill}
           onPress={onClose}
@@ -113,37 +135,63 @@ export const SortDropdownMenu: React.FC<SortDropdownMenuProps> = ({
           accessibilityLabel="Dismiss sort menu"
         />
 
-        {/* Dropdown Card */}
+        {/* Bottom Sheet (Mobile) or Popover Card (Desktop) */}
         <View
           style={[
-            styles.menuCard,
-            {
-              width: menuWidth,
-              top: Math.max(50, topPos),
-              left: leftPos,
-            },
+            isMobile ? styles.mobileSheet : styles.desktopCard,
+            isMobile
+              ? { maxHeight: Math.round(windowHeight * 0.8) }
+              : {
+                  width: menuWidth,
+                  top: Math.max(50, topPos),
+                  left: leftPos,
+                },
           ]}
         >
+          {/* Mobile Drag Handle */}
+          {isMobile && (
+            <View style={styles.dragHandleWrap}>
+              <View style={styles.dragHandle} />
+            </View>
+          )}
+
           {/* Header */}
           <View style={styles.menuHeader}>
             <View style={styles.headerTitleRow}>
-              <AppIcon name="sliders" size={14} color={Colors.primary} />
-              <Text style={styles.menuTitle}>Sort Matters</Text>
+              <View style={styles.headerIconCircle}>
+                <AppIcon name="sliders" size={14} color={Colors.primary} />
+              </View>
+              <Text style={styles.menuTitle}>Sort Cases</Text>
             </View>
+            <TouchableOpacity
+              onPress={onClose}
+              style={styles.closeBtn}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityRole="button"
+              accessibilityLabel="Close sort menu"
+              testID="sort-close-btn"
+            >
+              <AppIcon name="x" size={16} color={Colors.text.secondary} />
+            </TouchableOpacity>
           </View>
 
-          {/* Direction Toggle Row */}
+          {/* Ascending / Descending Segmented Toggle */}
           <View style={styles.directionToggleContainer}>
             <TouchableOpacity
               style={[styles.directionBtn, !sortAsc && styles.directionBtnActive]}
-              onPress={() => onSelectSort(sortBy, false)}
+              onPress={() => {
+                onSelectSort(sortBy, false);
+                onClose();
+              }}
               testID="sort-direction-desc"
-              accessibilityLabel="Sort Descending (Newest)"
+              accessibilityRole="button"
+              accessibilityState={{ selected: !sortAsc }}
+              accessibilityLabel="Sort Descending"
             >
               <AppIcon
                 name="chevron-down"
-                size={13}
-                color={!sortAsc ? Colors.primary : '#64748B'}
+                size={14}
+                color={!sortAsc ? Colors.text.white : Colors.text.secondary}
               />
               <Text
                 style={[
@@ -151,20 +199,25 @@ export const SortDropdownMenu: React.FC<SortDropdownMenuProps> = ({
                   !sortAsc && styles.directionBtnTextActive,
                 ]}
               >
-                Descending (Newest)
+                Descending
               </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               style={[styles.directionBtn, sortAsc && styles.directionBtnActive]}
-              onPress={() => onSelectSort(sortBy, true)}
+              onPress={() => {
+                onSelectSort(sortBy, true);
+                onClose();
+              }}
               testID="sort-direction-asc"
-              accessibilityLabel="Sort Ascending (Oldest)"
+              accessibilityRole="button"
+              accessibilityState={{ selected: sortAsc }}
+              accessibilityLabel="Sort Ascending"
             >
               <AppIcon
                 name="chevron-up"
-                size={13}
-                color={sortAsc ? Colors.primary : '#64748B'}
+                size={14}
+                color={sortAsc ? Colors.text.white : Colors.text.secondary}
               />
               <Text
                 style={[
@@ -172,12 +225,12 @@ export const SortDropdownMenu: React.FC<SortDropdownMenuProps> = ({
                   sortAsc && styles.directionBtnTextActive,
                 ]}
               >
-                Ascending (Oldest)
+                Ascending
               </Text>
             </TouchableOpacity>
           </View>
 
-          {/* Options List */}
+          {/* Sort Field Options List */}
           <ScrollView
             style={styles.optionsList}
             showsVerticalScrollIndicator={false}
@@ -194,6 +247,7 @@ export const SortDropdownMenu: React.FC<SortDropdownMenuProps> = ({
                     onClose();
                   }}
                   testID={`sort-option-${opt.key.toLowerCase()}`}
+                  accessibilityRole="button"
                   accessibilityState={{ selected: isSelected }}
                   accessibilityLabel={`${opt.label}: ${opt.sublabel}`}
                 >
@@ -203,8 +257,8 @@ export const SortDropdownMenu: React.FC<SortDropdownMenuProps> = ({
                     >
                       <AppIcon
                         name={opt.icon}
-                        size={14}
-                        color={isSelected ? Colors.primary : '#64748B'}
+                        size={15}
+                        color={isSelected ? Colors.primary : Colors.text.muted}
                       />
                     </View>
                     <View style={styles.optionTextWrap}>
@@ -221,11 +275,11 @@ export const SortDropdownMenu: React.FC<SortDropdownMenuProps> = ({
                   </View>
                   {isSelected && (
                     <View style={styles.selectedIndicatorRow}>
-                      <AppIcon
-                        name={sortAsc ? 'chevron-up' : 'chevron-down'}
-                        size={12}
-                        color={Colors.primary}
-                      />
+                      <View style={styles.directionPill}>
+                        <Text style={styles.directionPillText}>
+                          {sortAsc ? 'ASC' : 'DESC'}
+                        </Text>
+                      </View>
                       <AppIcon name="check" size={16} color={Colors.primary} />
                     </View>
                   )}
@@ -242,71 +296,113 @@ export const SortDropdownMenu: React.FC<SortDropdownMenuProps> = ({
 const styles = StyleSheet.create({
   modalRoot: {
     flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.25)',
+    backgroundColor: 'rgba(15, 23, 42, 0.35)',
   },
-  menuCard: {
+  modalRootMobile: {
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(15, 23, 42, 0.5)',
+  },
+  desktopCard: {
     position: 'absolute',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: Colors.surface,
     borderRadius: Radius.card,
     borderWidth: 1,
-    borderColor: '#CBD5E1',
-    maxHeight: 460,
+    borderColor: Colors.borderStrong,
+    maxHeight: 480,
     overflow: 'hidden',
     ...Shadows.card,
     elevation: 12,
+  },
+  mobileSheet: {
+    width: '100%',
+    backgroundColor: Colors.surface,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    borderTopWidth: 1,
+    borderColor: Colors.border,
+    overflow: 'hidden',
+    paddingBottom: Spacing.md,
+    ...Shadows.card,
+  },
+  dragHandleWrap: {
+    alignItems: 'center',
+    paddingTop: 10,
+    paddingBottom: 4,
+  },
+  dragHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: Colors.borderStrong,
   },
   menuHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: Spacing.md,
-    paddingVertical: 10,
-    backgroundColor: '#F8FAFC',
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+    backgroundColor: Colors.surface,
     borderBottomWidth: 1,
-    borderBottomColor: '#E2E8F0',
+    borderBottomColor: Colors.border,
   },
   headerTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
+  },
+  headerIconCircle: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: Colors.surfaceBlue,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   menuTitle: {
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: '700',
-    color: '#0F172A',
+    color: Colors.text.primary,
+  },
+  closeBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: Colors.surfaceSubtle,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   directionToggleContainer: {
     flexDirection: 'row',
-    padding: 6,
-    backgroundColor: '#F1F5F9',
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: 10,
+    backgroundColor: Colors.background,
     borderBottomWidth: 1,
-    borderBottomColor: '#E2E8F0',
-    gap: 6,
+    borderBottomColor: Colors.border,
+    gap: 8,
   },
   directionBtn: {
     flex: 1,
+    height: 38,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 5,
-    paddingHorizontal: 4,
-    borderRadius: 6,
-    backgroundColor: '#FFFFFF',
+    borderRadius: Radius.button,
+    backgroundColor: Colors.surface,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
-    gap: 4,
+    borderColor: Colors.borderStrong,
+    gap: 6,
   },
   directionBtnActive: {
-    backgroundColor: '#EFF6FF',
-    borderColor: '#93C5FD',
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
   },
   directionBtnText: {
-    fontSize: 10,
+    fontSize: 13,
     fontWeight: '600',
-    color: '#64748B',
+    color: Colors.text.secondary,
   },
   directionBtnTextActive: {
-    color: Colors.primary,
+    color: Colors.text.white,
     fontWeight: '700',
   },
   optionsList: {
@@ -316,51 +412,66 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: Spacing.md,
-    paddingVertical: 9,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Colors.border,
+    minHeight: 54,
   },
   optionRowSelected: {
-    backgroundColor: '#EFF6FF',
+    backgroundColor: Colors.surfaceBlue,
   },
   optionLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 12,
     flex: 1,
   },
   iconCircle: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#F1F5F9',
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: Colors.surfaceSubtle,
     justifyContent: 'center',
     alignItems: 'center',
   },
   iconCircleSelected: {
-    backgroundColor: '#DBEAFE',
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.borderStrong,
   },
   optionTextWrap: {
     flex: 1,
   },
   optionLabel: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '600',
-    color: '#1E293B',
+    color: Colors.text.primary,
   },
   optionLabelSelected: {
-    color: '#1D4ED8',
+    color: Colors.primary,
     fontWeight: '700',
   },
   optionSub: {
-    fontSize: 11,
-    color: '#64748B',
+    fontSize: 12,
+    color: Colors.text.muted,
     marginTop: 1,
   },
   selectedIndicatorRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 2,
+    gap: 6,
+  },
+  directionPill: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    backgroundColor: Colors.primary,
+  },
+  directionPillText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: Colors.text.white,
+    letterSpacing: 0.4,
   },
 });

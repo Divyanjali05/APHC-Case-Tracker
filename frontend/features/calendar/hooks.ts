@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../../services/api/client';
 import { ENDPOINTS } from '../../services/api/endpoints';
 import { offlineCalendarStorage } from '../../services/offline/offlineCalendarStorage';
+import { getLocalTodayIso } from '../../utils/calendarDate';
 import {
   AgendaResponse,
   CalendarSyncConnectPayload,
@@ -29,10 +30,10 @@ export function useDailyAgenda(params: UseDailyAgendaParams = {}) {
     userKey = 'advocate',
     enabled,
   } = params;
-  const dateKey = date || startDate || new Date().toISOString().split('T')[0];
+  const dateKey = `${date || startDate || getLocalTodayIso()}:${view}`;
 
   return useQuery({
-    queryKey: ['agenda', date, startDate, endDate, view],
+    queryKey: ['agenda', userKey, date, startDate, endDate, view],
     queryFn: async (): Promise<AgendaResponse> => {
       try {
         const queryParams = new URLSearchParams();

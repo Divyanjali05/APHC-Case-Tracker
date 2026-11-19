@@ -68,7 +68,8 @@ export default function MoreScreen() {
   const { width } = useWindowDimensions();
   const isDesktop = width >= 960;
 
-  const { user, role, isAdmin, isAuthenticated, isDemo, signOut } = useAuth();
+  const { user, role, isAdmin, isAuthenticated, isDemo, isLoggingOut, signOut } =
+    useAuth();
   const { showToast } = useToast();
 
   const [isNotifModalVisible, setIsNotifModalVisible] = useState(false);
@@ -101,13 +102,19 @@ export default function MoreScreen() {
   };
 
   const handleConfirmSignOut = async () => {
+    if (isSigningOut || isLoggingOut) {
+      return;
+    }
     setIsSigningOut(true);
     try {
       await pushNotificationService.deactivatePushNotifications().catch(() => {});
       await signOut();
       setIsLogoutConfirmVisible(false);
       showToast(t('more.signedOutNotice', 'Signed out securely.'), 'info');
-      router.replace('/');
+      if (typeof router.dismissAll === 'function' && router.canDismiss?.()) {
+        router.dismissAll();
+      }
+      router.replace('/(auth)/login');
     } finally {
       setIsSigningOut(false);
     }
@@ -333,10 +340,14 @@ export default function MoreScreen() {
         confirmLabel={t('settings.logout', 'Sign Out')}
         cancelLabel={t('common.cancel', 'Cancel')}
         destructive
-        loading={isSigningOut}
+        loading={isSigningOut || isLoggingOut}
         iconName="log-out"
         onConfirm={handleConfirmSignOut}
-        onCancel={() => setIsLogoutConfirmVisible(false)}
+        onCancel={() => {
+          if (!isSigningOut && !isLoggingOut) {
+            setIsLogoutConfirmVisible(false);
+          }
+        }}
         testID="more-logout-confirm"
       />
     </ScreenContainer>

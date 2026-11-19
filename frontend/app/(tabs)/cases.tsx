@@ -8,7 +8,6 @@ import {
   TouchableOpacity,
   ScrollView,
   RefreshControl,
-  Linking,
   useWindowDimensions,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
@@ -32,20 +31,24 @@ import {
 } from '../../components/cases/CaseFilterModal';
 import { EditCaseModal } from '../../components/cases/EditCaseModal';
 import { VoiceInputModal } from '../../components/speech/VoiceInputModal';
-import { FilterDropdownMenu } from '../../components/cases/FilterDropdownMenu';
 import { SortDropdownMenu } from '../../components/cases/SortDropdownMenu';
 import { exportCasesToCsvFile } from '../../utils/csvExport';
 import { OfflineBanner } from '../../components/offline/OfflineBanner';
 import { Colors } from '../../constants/colors';
-import { Radius, Shadows, Spacing } from '../../constants/theme';
+import { Radius, Spacing } from '../../constants/theme';
 import { useCases, useDeleteCase } from '../../features/cases/hooks';
 import { useAuth } from '../../features/auth/AuthContext';
-import { normalizeVoiceQuery } from '../../services/speech/voiceQueryNormalizer';
 import { CaseItem } from '../../types';
-import { API_BASE_URL } from '../../services/api/client';
-import { ENDPOINTS } from '../../services/api/endpoints';
-import { tokenStorage } from '../../services/auth/tokenStorage';
 import { formatCaseNumber } from '../../utils/formatters';
+import {
+  SortType,
+  extractCaseFilterOptions,
+  filterAndSortCases,
+  getSortButtonLabel,
+  buildActiveFilterChips,
+} from '../../utils/caseFiltering';
+
+export type { SortType };
 
 export type QuickFilterType =
   | 'ALL'
@@ -56,41 +59,26 @@ export type QuickFilterType =
   | 'WITH_JUDGMENT'
   | 'WITHOUT_JUDGMENT';
 
-export type SortType =
-  | 'CASE_DATE'
-  | 'NEXT_HEARING'
-  | 'JUDGMENT_DATE'
-  | 'CLOSED_DATE'
-  | 'CASE_NAME'
-  | 'CASE_NUMBER'
-  | 'RECENTLY_UPDATED';
-
 const PAGE_SIZE = 10;
 
-const VALID_QUICK_FILTERS: QuickFilterType[] = [
-  'ALL',
-  'UPCOMING',
-  'PENDING',
-  'ADJOURNED',
-  'DISPOSED',
-  'WITH_JUDGMENT',
-  'WITHOUT_JUDGMENT',
-];
-
-/** Parse date string to timestamp in ms, returning null if invalid or N/A */
-const parseDateToMs = (dateStr?: string | null): number | null => {
-  if (!dateStr || typeof dateStr !== 'string') return null;
-  const trimmed = dateStr.trim();
+const mapRouteFilterParam = (rawFilter?: string): Partial<CaseFilters> | null => {
+  if (!rawFilter) return null;
+  const upper = rawFilter.trim().toUpperCase();
   if (
-    !trimmed ||
-    trimmed.toUpperCase() === 'N/A' ||
-    trimmed.toLowerCase() === 'null' ||
-    trimmed.toLowerCase() === 'undefined'
+    upper === 'UPCOMING' ||
+    upper === 'PENDING' ||
+    upper === 'ADJOURNED' ||
+    upper === 'DISPOSED'
   ) {
-    return null;
+    return { status: upper };
   }
-  const t = new Date(trimmed).getTime();
-  return isNaN(t) ? null : t;
+  if (upper === 'WITH_JUDGMENT') {
+    return { judgment: 'AVAILABLE' };
+  }
+  if (upper === 'WITHOUT_JUDGMENT') {
+    return { judgment: 'NOT_AVAILABLE' };
+  }
+  return null;
 };
 
 export default function CasesScreen() {
@@ -98,9 +86,26 @@ export default function CasesScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ search?: string; filter?: string }>();
   const { width } = useWindowDimensions();
+  const isMobile = width < 768;
   const isDesktop = width >= 1024;
   const { showToast } = useToast();
   const { isAuthenticated, isDemo } = useAuth();
+
+  // Search state + debounced backend query
+  const [searchQuery, setSearchQuery] = useState(params.search || '');
+  const [debouncedSearch, setDebouncedSearch] = useState((params.search || '').trim());
+
+  useEffect(() => {
+    const trimmed = searchQuery.trim();
+    if (!trimmed) {
+      setDebouncedSearch('');
+      return;
+    }
+    const timer = setTimeout(() => {
+      setDebouncedSearch(trimmed);
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   const {
     data: cases,
@@ -108,26 +113,22 @@ export default function CasesScreen() {
     isError,
     refetch,
     isRefetching,
-  } = useCases({ enabled: Boolean(isAuthenticated || isDemo) });
+  } = useCases({
+    enabled: Boolean(isAuthenticated || isDemo),
+    search: debouncedSearch,
+  });
 
   const deleteCaseMutation = useDeleteCase();
 
-  // Search state
-  const [searchQuery, setSearchQuery] = useState(params.search || '');
-
-  // Quick Filter Pill state
-  const initialQuickFilter =
-    params.filter && VALID_QUICK_FILTERS.includes(params.filter as QuickFilterType)
-      ? (params.filter as QuickFilterType)
-      : 'ALL';
-  const [quickFilter, setQuickFilter] = useState<QuickFilterType>(initialQuickFilter);
-
-  // Advanced Filters state
-  const [advancedFilters, setAdvancedFilters] = useState<CaseFilters>(DEFAULT_FILTERS);
+  // Unified Filter Panel state
+  const [advancedFilters, setAdvancedFilters] = useState<CaseFilters>(() => {
+    const mapped = mapRouteFilterParam(params.filter);
+    return mapped ? { ...DEFAULT_FILTERS, ...mapped } : DEFAULT_FILTERS;
+  });
   const [isFilterModalVisible, setIsFilterModalVisible] = useState(false);
 
   // Sorting state
-  const [sortBy, setSortBy] = useState<SortType>('CASE_DATE');
+  const [sortBy, setSortBy] = useState<SortType>('RECENTLY_UPDATED');
   const [sortAsc, setSortAsc] = useState(false);
 
   // Pagination state
@@ -149,56 +150,41 @@ export default function CasesScreen() {
   const [isExportingCsv, setIsExportingCsv] = useState(false);
   const [isImportModalVisible, setIsImportModalVisible] = useState(false);
 
-  // Dropdown Menus State & Position
-  const filterBtnRef = React.useRef<View>(null);
+  // Sort Menu State & Anchor Position (desktop popover / mobile bottom sheet)
   const sortBtnRef = React.useRef<View>(null);
-  const [isFilterDropdownOpen, setIsFilterDropdownOpen] = useState(false);
   const [isSortDropdownOpen, setIsSortDropdownOpen] = useState(false);
-  const [filterMenuCoords, setFilterMenuCoords] = useState<
-    { x: number; y: number } | undefined
-  >(undefined);
   const [sortMenuCoords, setSortMenuCoords] = useState<
     { x: number; y: number } | undefined
   >(undefined);
 
-  const handleOpenFilterDropdown = () => {
+  const handleOpenFilterPanel = () => {
     setIsSortDropdownOpen(false);
-    setIsFilterDropdownOpen(true);
-    if (
-      filterBtnRef.current &&
-      typeof (filterBtnRef.current as any).measureInWindow === 'function'
-    ) {
-      try {
-        (filterBtnRef.current as any).measureInWindow(
-          (x: number, y: number, w: number, h: number) => {
-            if (typeof y === 'number' && typeof h === 'number') {
-              setFilterMenuCoords({ x, y: y + h + 4 });
-            }
-          }
-        );
-      } catch {
-        // fallback in environments where measureInWindow is not implemented
-      }
-    }
+    setIsFilterModalVisible(true);
   };
 
-  const handleOpenSortDropdown = () => {
-    setIsFilterDropdownOpen(false);
+  const handleOpenSortMenu = () => {
+    setIsFilterModalVisible(false);
     setIsSortDropdownOpen(true);
     if (
+      !isMobile &&
       sortBtnRef.current &&
-      typeof (sortBtnRef.current as any).measureInWindow === 'function'
+      typeof (sortBtnRef.current as unknown as { measureInWindow?: unknown })
+        .measureInWindow === 'function'
     ) {
       try {
-        (sortBtnRef.current as any).measureInWindow(
-          (x: number, y: number, w: number, h: number) => {
-            if (typeof y === 'number' && typeof h === 'number') {
-              setSortMenuCoords({ x, y: y + h + 4 });
-            }
+        (
+          sortBtnRef.current as unknown as {
+            measureInWindow: (
+              cb: (x: number, y: number, w: number, h: number) => void
+            ) => void;
           }
-        );
+        ).measureInWindow((x, y, _w, h) => {
+          if (typeof y === 'number' && typeof h === 'number') {
+            setSortMenuCoords({ x, y: y + h + 4 });
+          }
+        });
       } catch {
-        // fallback in environments where measureInWindow is not implemented
+        // fallback when measureInWindow is unavailable
       }
     }
   };
@@ -214,20 +200,28 @@ export default function CasesScreen() {
 
   // Sync route filter param when navigating from dashboard StatCards
   useEffect(() => {
-    if (params.filter) {
-      const pFilter = params.filter.toUpperCase();
-      if (VALID_QUICK_FILTERS.includes(pFilter as QuickFilterType)) {
-        setQuickFilter(pFilter as QuickFilterType);
-        setCurrentPage(1);
-      } else if (['PENDING', 'DISPOSED', 'ADJOURNED'].includes(pFilter)) {
-        setAdvancedFilters(prev => ({
-          ...prev,
-          status: pFilter as CaseFilters['status'],
-        }));
-        setCurrentPage(1);
-      }
+    const mapped = mapRouteFilterParam(params.filter);
+    if (mapped) {
+      setAdvancedFilters(prev => ({ ...prev, ...mapped }));
+      setCurrentPage(1);
     }
   }, [params.filter]);
+
+  // Dynamically derive drawer options from loaded cases + backend choices
+  const { availableCaseTypes, availableCourts, availableYears } = useMemo(
+    () => extractCaseFilterOptions(cases),
+    [cases]
+  );
+
+  const activeFilterCount = countActiveFilters(advancedFilters);
+
+  const sortButtonLabel = getSortButtonLabel(sortBy, sortAsc);
+
+  // Combined Search, Multi-Filter, and Multi-Sort Pipeline
+  const filteredAndSortedCases = useMemo(
+    () => filterAndSortCases(cases, searchQuery, advancedFilters, sortBy, sortAsc),
+    [cases, searchQuery, advancedFilters, sortBy, sortAsc]
+  );
 
   const handleExportCsv = async () => {
     if (isExportingCsv) return;
@@ -235,10 +229,14 @@ export default function CasesScreen() {
       setIsExportingCsv(true);
 
       if (!filteredAndSortedCases || filteredAndSortedCases.length === 0) {
-        showToast(
-          t('export.emptyRecords', 'No cases match your current filters to export.'),
-          'warning'
-        );
+        const hasAnyCases = Array.isArray(cases) && cases.length > 0;
+        const emptyMessage = hasAnyCases
+          ? t('export.emptyRecords', 'No cases match your current filters to export.')
+          : t(
+              'export.noCasesInDocket',
+              'No cases in your docket yet. Import cases first to export CSV.'
+            );
+        showToast(emptyMessage, 'warning');
         return;
       }
 
@@ -267,330 +265,7 @@ export default function CasesScreen() {
     }
   };
 
-  const getFilterDropdownLabel = (): string => {
-    if (quickFilter === 'UPCOMING') return 'Upcoming';
-    if (quickFilter === 'PENDING') return 'Pending';
-    if (quickFilter === 'ADJOURNED') return 'Adjourned';
-    if (quickFilter === 'DISPOSED') return 'Disposed';
-    if (quickFilter === 'WITH_JUDGMENT') return 'Judgment';
-    if (quickFilter === 'WITHOUT_JUDGMENT') return 'Pending Jdg';
-    if (activeAdvancedFilterCount > 0) return `Filters (${activeAdvancedFilterCount})`;
-    return 'Filter';
-  };
-
-  const getSortDropdownLabel = (): string => {
-    const dir = sortAsc ? '↑' : '↓';
-    switch (sortBy) {
-      case 'CASE_DATE':
-        return `Date ${dir}`;
-      case 'NEXT_HEARING':
-        return `Hearing ${dir}`;
-      case 'JUDGMENT_DATE':
-        return `Jdg Date ${dir}`;
-      case 'CLOSED_DATE':
-        return `Closed ${dir}`;
-      case 'CASE_NAME':
-        return `Name ${dir}`;
-      case 'CASE_NUMBER':
-        return `No. ${dir}`;
-      case 'RECENTLY_UPDATED':
-        return `Updated ${dir}`;
-      default:
-        return `Sort ${dir}`;
-    }
-  };
-
-  // Combined Search, Multi-Filter, and Multi-Sort Pipeline
-  const filteredAndSortedCases = useMemo(() => {
-    const rawList: CaseItem[] = Array.isArray(cases)
-      ? cases
-      : Array.isArray((cases as unknown as { results?: CaseItem[] })?.results)
-        ? (cases as unknown as { results: CaseItem[] }).results
-        : [];
-    let result: CaseItem[] = rawList.slice();
-
-    // 1. Search Query Filter
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase().trim();
-      const normResult = normalizeVoiceQuery(searchQuery);
-      const normalizedQ = normResult.normalized.toLowerCase().trim();
-
-      result = result.filter(item => {
-        const fullCaseNumber = formatCaseNumber(
-          item.case_type,
-          item.case_number,
-          item.filing_year
-        ).toLowerCase();
-        const rawCaseNumber = String(item.case_number || '').toLowerCase();
-        const caseType = String(item.case_type || '').toLowerCase();
-        const parties = `${item.petitioner || ''} ${item.respondent || ''}`.toLowerCase();
-        const advocate = `${item.petitioner_advocate || ''} ${
-          item.respondent_advocate || ''
-        }`.toLowerCase();
-        const court = `${item.bench || ''}`.toLowerCase();
-        const hall = item.court_hall_number ? String(item.court_hall_number) : '';
-
-        return (
-          fullCaseNumber.includes(q) ||
-          fullCaseNumber.includes(normalizedQ) ||
-          rawCaseNumber.includes(q) ||
-          rawCaseNumber.includes(normalizedQ) ||
-          caseType.includes(q) ||
-          parties.includes(q) ||
-          parties.includes(normalizedQ) ||
-          advocate.includes(q) ||
-          advocate.includes(normalizedQ) ||
-          court.includes(q) ||
-          hall === q
-        );
-      });
-    }
-
-    // 2. Quick Filter Pills
-    if (quickFilter === 'UPCOMING') {
-      result = result.filter(item => {
-        const status = (item.status || item.current_stage || '').toLowerCase();
-        return (
-          status.includes('upcoming') ||
-          status.includes('listed') ||
-          Boolean(item.effective_next_hearing_date || item.next_hearing_date)
-        );
-      });
-    } else if (quickFilter === 'ADJOURNED') {
-      result = result.filter(item => {
-        const status = (item.status || item.current_stage || '').toLowerCase();
-        return status.includes('adjourn');
-      });
-    } else if (quickFilter === 'DISPOSED') {
-      result = result.filter(item => {
-        const status = (item.status || item.current_stage || '').toLowerCase();
-        return status.includes('disposed') || status.includes('closed');
-      });
-    } else if (quickFilter === 'WITH_JUDGMENT') {
-      result = result.filter(item => Boolean(item.judgment_date || item.latest_judgment));
-    } else if (quickFilter === 'WITHOUT_JUDGMENT') {
-      result = result.filter(item => !item.judgment_date && !item.latest_judgment);
-    }
-
-    // 3. Advanced Multi-Filters
-
-    // A. Status Filter
-    if (advancedFilters.status !== 'ALL') {
-      result = result.filter(item => {
-        const s = (item.status || item.current_stage || '').toUpperCase();
-        return s.includes(advancedFilters.status);
-      });
-    }
-
-    // B. Hearing Timeframe Filter
-    if (advancedFilters.hearing !== 'ALL') {
-      const now = new Date();
-      const startOfToday = new Date(
-        now.getFullYear(),
-        now.getMonth(),
-        now.getDate()
-      ).getTime();
-      const endOfToday = startOfToday + 86400000 - 1;
-      const endOfWeek = startOfToday + 7 * 86400000;
-      const endOfMonth = new Date(
-        now.getFullYear(),
-        now.getMonth() + 1,
-        0,
-        23,
-        59,
-        59
-      ).getTime();
-
-      result = result.filter(item => {
-        const hDate = parseDateToMs(
-          item.effective_next_hearing_date || item.next_hearing_date
-        );
-
-        if (advancedFilters.hearing === 'NOT_SCHEDULED') {
-          return hDate === null;
-        }
-        if (hDate === null) return false;
-
-        switch (advancedFilters.hearing) {
-          case 'TODAY':
-            return hDate >= startOfToday && hDate <= endOfToday;
-          case 'THIS_WEEK':
-            return hDate >= startOfToday && hDate <= endOfWeek;
-          case 'THIS_MONTH':
-            return hDate >= startOfToday && hDate <= endOfMonth;
-          case 'UPCOMING':
-            return hDate >= startOfToday;
-          case 'PAST':
-            return hDate < startOfToday;
-          default:
-            return true;
-        }
-      });
-    }
-
-    // C. Judgment Availability Filter
-    if (advancedFilters.judgment !== 'ALL') {
-      result = result.filter(item => {
-        const hasJ = Boolean(item.judgment_date || item.latest_judgment);
-        if (advancedFilters.judgment === 'AVAILABLE') return hasJ;
-        if (advancedFilters.judgment === 'PENDING') {
-          const s = (item.status || '').toUpperCase();
-          return !hasJ && (s.includes('DISPOSED') || s.includes('CLOSED'));
-        }
-        if (advancedFilters.judgment === 'NOT_AVAILABLE') return !hasJ;
-        return true;
-      });
-    }
-
-    // D. Filing / Started Date Range Filter
-    if (advancedFilters.filingDateFrom || advancedFilters.filingDateTo) {
-      const fromMs = parseDateToMs(advancedFilters.filingDateFrom);
-      const toMs = parseDateToMs(advancedFilters.filingDateTo);
-      result = result.filter(item => {
-        const fMs = item.filing_year
-          ? new Date(item.filing_year, 0, 1).getTime()
-          : parseDateToMs(item.created_at);
-        if (fMs === null) return false;
-        if (fromMs !== null && fMs < fromMs) return false;
-        if (toMs !== null && fMs > toMs + 86400000) return false;
-        return true;
-      });
-    }
-
-    // E. Next Hearing Date Range Filter
-    if (advancedFilters.hearingDateFrom || advancedFilters.hearingDateTo) {
-      const fromMs = parseDateToMs(advancedFilters.hearingDateFrom);
-      const toMs = parseDateToMs(advancedFilters.hearingDateTo);
-      result = result.filter(item => {
-        const hMs = parseDateToMs(
-          item.effective_next_hearing_date || item.next_hearing_date
-        );
-        if (hMs === null) return false;
-        if (fromMs !== null && hMs < fromMs) return false;
-        if (toMs !== null && hMs > toMs + 86400000) return false;
-        return true;
-      });
-    }
-
-    // F. Closed / Disposal Date Range Filter
-    if (advancedFilters.closedDateFrom || advancedFilters.closedDateTo) {
-      const fromMs = parseDateToMs(advancedFilters.closedDateFrom);
-      const toMs = parseDateToMs(advancedFilters.closedDateTo);
-      result = result.filter(item => {
-        const cMs = parseDateToMs(
-          item.judgment_date || item.latest_judgment?.judgment_date
-        );
-        if (cMs === null) return false;
-        if (fromMs !== null && cMs < fromMs) return false;
-        if (toMs !== null && cMs > toMs + 86400000) return false;
-        return true;
-      });
-    }
-
-    // G. Court Hall Filter
-    if (advancedFilters.courtHallNumber?.trim()) {
-      const targetHall = advancedFilters.courtHallNumber.trim().toLowerCase();
-      result = result.filter(item => {
-        return (
-          item.court_hall_number !== null &&
-          String(item.court_hall_number).toLowerCase() === targetHall
-        );
-      });
-    }
-
-    // H. Court Name Filter
-    if (advancedFilters.court?.trim()) {
-      const targetCourt = advancedFilters.court.trim().toLowerCase();
-      result = result.filter(item => {
-        const cName = `${item.bench || ''}`.toLowerCase();
-        return cName.includes(targetCourt);
-      });
-    }
-
-    // I. Case Type Filter
-    if (advancedFilters.caseType?.trim()) {
-      const targetType = advancedFilters.caseType.trim().toUpperCase();
-      result = result.filter(item => {
-        return (item.case_type || '').toUpperCase() === targetType;
-      });
-    }
-
-    // J. Filing Year Filter
-    if (advancedFilters.caseYear?.trim()) {
-      const targetYear = parseInt(advancedFilters.caseYear.trim(), 10);
-      result = result.filter(item => {
-        return item.filing_year === targetYear;
-      });
-    }
-
-    // 4. Sorting with Consistent Missing Date Handling
-    result.sort((a, b) => {
-      let comparison = 0;
-
-      if (sortBy === 'CASE_DATE') {
-        const dateA = a.filing_year
-          ? new Date(a.filing_year, 0, 1).getTime()
-          : parseDateToMs(a.created_at);
-        const dateB = b.filing_year
-          ? new Date(b.filing_year, 0, 1).getTime()
-          : parseDateToMs(b.created_at);
-        if (dateA === null && dateB === null) comparison = 0;
-        else if (dateA === null) comparison = -1;
-        else if (dateB === null) comparison = 1;
-        else comparison = dateA - dateB;
-      } else if (sortBy === 'NEXT_HEARING') {
-        const dateA = parseDateToMs(a.effective_next_hearing_date || a.next_hearing_date);
-        const dateB = parseDateToMs(b.effective_next_hearing_date || b.next_hearing_date);
-        if (dateA === null && dateB === null) comparison = 0;
-        else if (dateA === null) comparison = -1;
-        else if (dateB === null) comparison = 1;
-        else comparison = dateA - dateB;
-      } else if (sortBy === 'JUDGMENT_DATE') {
-        const dateA = parseDateToMs(a.judgment_date || a.latest_judgment?.judgment_date);
-        const dateB = parseDateToMs(b.judgment_date || b.latest_judgment?.judgment_date);
-        if (dateA === null && dateB === null) comparison = 0;
-        else if (dateA === null) comparison = -1;
-        else if (dateB === null) comparison = 1;
-        else comparison = dateA - dateB;
-      } else if (sortBy === 'CLOSED_DATE') {
-        const statusA = (a.status || '').toUpperCase();
-        const statusB = (b.status || '').toUpperCase();
-        const isDisposedA = statusA.includes('DISPOSED') || statusA.includes('CLOSED');
-        const isDisposedB = statusB.includes('DISPOSED') || statusB.includes('CLOSED');
-        const dateA = isDisposedA
-          ? parseDateToMs(a.judgment_date || a.latest_judgment?.judgment_date)
-          : null;
-        const dateB = isDisposedB
-          ? parseDateToMs(b.judgment_date || b.latest_judgment?.judgment_date)
-          : null;
-        if (dateA === null && dateB === null) comparison = 0;
-        else if (dateA === null) comparison = -1;
-        else if (dateB === null) comparison = 1;
-        else comparison = dateA - dateB;
-      } else if (sortBy === 'CASE_NAME') {
-        const nameA = `${a.petitioner || ''} vs ${a.respondent || ''}`.toLowerCase();
-        const nameB = `${b.petitioner || ''} vs ${b.respondent || ''}`.toLowerCase();
-        comparison = nameA.localeCompare(nameB);
-      } else if (sortBy === 'CASE_NUMBER') {
-        const numA = `${a.case_type || ''} ${a.case_number || ''}/${a.filing_year || ''}`;
-        const numB = `${b.case_type || ''} ${b.case_number || ''}/${b.filing_year || ''}`;
-        comparison = numA.localeCompare(numB);
-      } else if (sortBy === 'RECENTLY_UPDATED') {
-        const dateA = parseDateToMs(a.updated_at);
-        const dateB = parseDateToMs(b.updated_at);
-        if (dateA === null && dateB === null) comparison = 0;
-        else if (dateA === null) comparison = -1;
-        else if (dateB === null) comparison = 1;
-        else comparison = dateA - dateB;
-      }
-
-      return sortAsc ? comparison : -comparison;
-    });
-
-    return result;
-  }, [cases, searchQuery, quickFilter, advancedFilters, sortBy, sortAsc]);
-
-  // Pagination calculation
+  // Pagination calculation (preserves applied filters, search, and sort)
   const totalCases = filteredAndSortedCases.length;
   const totalPages = Math.max(1, Math.ceil(totalCases / PAGE_SIZE));
   const currentPageSafe = Math.min(Math.max(1, currentPage), totalPages);
@@ -600,94 +275,15 @@ export default function CasesScreen() {
     return filteredAndSortedCases.slice(startIdx, startIdx + PAGE_SIZE);
   }, [filteredAndSortedCases, currentPageSafe]);
 
-  const activeAdvancedFilterCount = countActiveFilters(advancedFilters);
-
-  // Active filter chip removable descriptors
-  const activeChips = useMemo(() => {
-    const chips: { key: string; label: string; onRemove: () => void }[] = [];
-
-    if (advancedFilters.status !== 'ALL') {
-      chips.push({
-        key: 'status',
-        label: `Status: ${advancedFilters.status}`,
-        onRemove: () => setAdvancedFilters(p => ({ ...p, status: 'ALL' })),
-      });
-    }
-    if (advancedFilters.hearing !== 'ALL') {
-      chips.push({
-        key: 'hearing',
-        label: `Schedule: ${advancedFilters.hearing.replace('_', ' ')}`,
-        onRemove: () => setAdvancedFilters(p => ({ ...p, hearing: 'ALL' })),
-      });
-    }
-    if (advancedFilters.judgment !== 'ALL') {
-      chips.push({
-        key: 'judgment',
-        label: `Judgment: ${advancedFilters.judgment.replace('_', ' ')}`,
-        onRemove: () => setAdvancedFilters(p => ({ ...p, judgment: 'ALL' })),
-      });
-    }
-    if (advancedFilters.filingDateFrom || advancedFilters.filingDateTo) {
-      chips.push({
-        key: 'filingDate',
-        label: `Filing: ${advancedFilters.filingDateFrom || 'Start'} to ${
-          advancedFilters.filingDateTo || 'End'
-        }`,
-        onRemove: () =>
-          setAdvancedFilters(p => ({ ...p, filingDateFrom: '', filingDateTo: '' })),
-      });
-    }
-    if (advancedFilters.hearingDateFrom || advancedFilters.hearingDateTo) {
-      chips.push({
-        key: 'hearingDate',
-        label: `Hearing: ${advancedFilters.hearingDateFrom || 'Start'} to ${
-          advancedFilters.hearingDateTo || 'End'
-        }`,
-        onRemove: () =>
-          setAdvancedFilters(p => ({ ...p, hearingDateFrom: '', hearingDateTo: '' })),
-      });
-    }
-    if (advancedFilters.closedDateFrom || advancedFilters.closedDateTo) {
-      chips.push({
-        key: 'closedDate',
-        label: `Closed: ${advancedFilters.closedDateFrom || 'Start'} to ${
-          advancedFilters.closedDateTo || 'End'
-        }`,
-        onRemove: () =>
-          setAdvancedFilters(p => ({ ...p, closedDateFrom: '', closedDateTo: '' })),
-      });
-    }
-    if (advancedFilters.courtHallNumber?.trim()) {
-      chips.push({
-        key: 'courtHall',
-        label: `Hall ${advancedFilters.courtHallNumber}`,
-        onRemove: () => setAdvancedFilters(p => ({ ...p, courtHallNumber: '' })),
-      });
-    }
-    if (advancedFilters.court?.trim()) {
-      chips.push({
-        key: 'court',
-        label: `Court: ${advancedFilters.court}`,
-        onRemove: () => setAdvancedFilters(p => ({ ...p, court: '' })),
-      });
-    }
-    if (advancedFilters.caseType?.trim()) {
-      chips.push({
-        key: 'caseType',
-        label: `Type: ${advancedFilters.caseType}`,
-        onRemove: () => setAdvancedFilters(p => ({ ...p, caseType: '' })),
-      });
-    }
-    if (advancedFilters.caseYear?.trim()) {
-      chips.push({
-        key: 'caseYear',
-        label: `Year: ${advancedFilters.caseYear}`,
-        onRemove: () => setAdvancedFilters(p => ({ ...p, caseYear: '' })),
-      });
-    }
-
-    return chips;
-  }, [advancedFilters]);
+  // Active filter chip removable descriptors (rendered ONLY when filters are applied)
+  const activeChips = useMemo(
+    () =>
+      buildActiveFilterChips(advancedFilters, updater => {
+        setAdvancedFilters(updater);
+        setCurrentPage(1);
+      }),
+    [advancedFilters]
+  );
 
   // Case Actions Handlers
   const handleSelectCase = (id: number) => {
@@ -736,7 +332,7 @@ export default function CasesScreen() {
 
   const handleStatusBadgeClick = (statusText: string) => {
     const s = statusText.toUpperCase();
-    if (['PENDING', 'DISPOSED', 'ADJOURNED'].includes(s)) {
+    if (['PENDING', 'UPCOMING', 'DISPOSED', 'ADJOURNED'].includes(s)) {
       setAdvancedFilters(p => ({ ...p, status: s as CaseFilters['status'] }));
       setCurrentPage(1);
     }
@@ -744,10 +340,126 @@ export default function CasesScreen() {
 
   const handleClearAllFilters = () => {
     setSearchQuery('');
-    setQuickFilter('ALL');
+    setDebouncedSearch('');
     setAdvancedFilters(DEFAULT_FILTERS);
     setCurrentPage(1);
   };
+
+  const renderFilterButton = (fullWidth: boolean) => {
+    const isActive = activeFilterCount > 0;
+    return (
+      <TouchableOpacity
+        style={[
+          styles.toolbarBtn,
+          styles.secondaryToolbarBtn,
+          fullWidth && styles.mobileGridBtn,
+          isActive && styles.toolbarBtnActive,
+        ]}
+        onPress={handleOpenFilterPanel}
+        activeOpacity={0.75}
+        testID="cases-filter-dropdown-btn"
+        accessibilityRole="button"
+        accessibilityLabel={
+          isActive ? `Filter cases, ${activeFilterCount} active` : 'Filter cases'
+        }
+      >
+        <AppIcon
+          name="filter"
+          size={15}
+          color={isActive ? Colors.primary : Colors.text.secondary}
+        />
+        <Text
+          style={[styles.toolbarBtnText, isActive && styles.toolbarBtnTextActive]}
+          numberOfLines={1}
+        >
+          {t('cases.filterButton', 'Filter')}
+        </Text>
+        {isActive && (
+          <View style={styles.filterCountPill} testID="filter-active-count-pill">
+            <Text style={styles.filterCountPillText}>{activeFilterCount}</Text>
+          </View>
+        )}
+      </TouchableOpacity>
+    );
+  };
+
+  const renderSortButton = (fullWidth: boolean) => (
+    <View
+      ref={sortBtnRef}
+      collapsable={false}
+      style={fullWidth ? styles.mobileGridCell : styles.desktopBtnWrap}
+    >
+      <TouchableOpacity
+        style={[
+          styles.toolbarBtn,
+          styles.secondaryToolbarBtn,
+          fullWidth && styles.mobileGridBtn,
+        ]}
+        onPress={handleOpenSortMenu}
+        activeOpacity={0.75}
+        testID="cases-sort-dropdown-btn"
+        accessibilityRole="button"
+        accessibilityLabel={`Sort cases: ${sortButtonLabel}`}
+      >
+        <AppIcon name="sliders" size={15} color={Colors.text.secondary} />
+        <Text style={styles.toolbarBtnText} numberOfLines={1}>
+          {sortButtonLabel}
+        </Text>
+        <AppIcon name="chevron-down" size={14} color={Colors.text.muted} />
+      </TouchableOpacity>
+    </View>
+  );
+
+  const renderImportButton = (fullWidth: boolean) => (
+    <TouchableOpacity
+      style={[styles.toolbarBtn, styles.importBtn, fullWidth && styles.mobileGridBtn]}
+      onPress={() => setIsImportModalVisible(true)}
+      activeOpacity={0.8}
+      testID="import-cases-button"
+      accessibilityRole="button"
+      accessibilityLabel={t('import.importFiles', 'Import')}
+    >
+      <AppIcon name="upload" size={15} color={Colors.text.white} />
+      <Text style={styles.importBtnText} numberOfLines={1}>
+        {isDesktop
+          ? t('import.importFiles', 'Import Files')
+          : t('import.importShort', 'Import')}
+      </Text>
+    </TouchableOpacity>
+  );
+
+  const renderExportButton = (fullWidth: boolean) => (
+    <TouchableOpacity
+      style={[
+        styles.toolbarBtn,
+        styles.exportBtn,
+        fullWidth && styles.mobileGridBtn,
+        isExportingCsv && styles.toolbarBtnDisabled,
+      ]}
+      onPress={handleExportCsv}
+      disabled={isExportingCsv}
+      activeOpacity={0.75}
+      testID="export-cases-csv-button"
+      accessibilityRole="button"
+      accessibilityLabel={t('export.exportCsv', 'Export CSV')}
+    >
+      <AppIcon
+        name="download"
+        size={15}
+        color={isExportingCsv ? Colors.text.muted : Colors.primary}
+      />
+      <Text
+        style={[styles.exportBtnText, isExportingCsv && styles.exportBtnTextDisabled]}
+        numberOfLines={1}
+      >
+        {isExportingCsv
+          ? '...'
+          : isDesktop
+            ? t('export.exportCsv', 'Export CSV')
+            : t('export.exportShort', 'Export')}
+      </Text>
+    </TouchableOpacity>
+  );
 
   return (
     <ScreenContainer testID="cases-screen">
@@ -759,9 +471,9 @@ export default function CasesScreen() {
           <Badge label={String(totalCases)} variant="primary" />
         </View>
 
-        {/* Unified Responsive Toolbar */}
+        {/* Responsive Toolbar */}
         <View style={[styles.toolbarContainer, isDesktop && styles.toolbarDesktop]}>
-          {/* Row 1: Search Input (Full width on mobile) with Clear Button & Voice Search */}
+          {/* Row 1: Full-width Search Input with Search Icon, Clear Action & Voice Search */}
           <View
             style={[styles.searchContainer, isDesktop && styles.searchContainerDesktop]}
           >
@@ -769,10 +481,7 @@ export default function CasesScreen() {
               <AppIcon name="search" size={16} color={Colors.text.muted} />
               <TextInput
                 style={styles.searchInput}
-                placeholder={t(
-                  'cases.searchPlaceholder',
-                  'Search by Case Type, Number, Party or Advocate...'
-                )}
+                placeholder="Search by case number, petitioner, respondent"
                 placeholderTextColor={Colors.text.muted}
                 value={searchQuery}
                 onChangeText={txt => {
@@ -780,19 +489,23 @@ export default function CasesScreen() {
                   setCurrentPage(1);
                 }}
                 clearButtonMode="never"
+                returnKeyType="search"
                 testID="cases-search-input"
               />
               {Boolean(searchQuery) && (
                 <TouchableOpacity
                   onPress={() => {
                     setSearchQuery('');
+                    setDebouncedSearch('');
                     setCurrentPage(1);
                   }}
                   style={styles.searchClearBtn}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   testID="cases-search-clear-button"
+                  accessibilityRole="button"
                   accessibilityLabel="Clear search"
                 >
-                  <AppIcon name="x" size={15} color="#94A3B8" />
+                  <AppIcon name="x" size={15} color={Colors.text.muted} />
                 </TouchableOpacity>
               )}
             </View>
@@ -800,128 +513,50 @@ export default function CasesScreen() {
               style={styles.voiceSearchButton}
               onPress={() => setIsVoiceModalVisible(true)}
               testID="cases-voice-mic-button"
+              accessibilityRole="button"
               accessibilityLabel={t('voice.openVoiceSearch', 'Voice search')}
             >
               <AppIcon name="mic" size={18} color={Colors.primary} />
             </TouchableOpacity>
           </View>
 
-          {/* Row 2: Controls Row (Filter dropdown, Sort dropdown, Import, Export CSV) */}
-          <View style={[styles.controlsRow, isDesktop && styles.controlsRowDesktop]}>
-            {/* Filter Dropdown Button */}
-            <View ref={filterBtnRef} collapsable={false} style={styles.controlBtnWrapper}>
-              <TouchableOpacity
-                style={[
-                  styles.toolbarBtn,
-                  styles.dropdownBtn,
-                  (quickFilter !== 'ALL' || activeAdvancedFilterCount > 0) &&
-                    styles.toolbarBtnActive,
-                ]}
-                onPress={handleOpenFilterDropdown}
-                testID="cases-filter-dropdown-btn"
-                accessibilityLabel="Filter cases dropdown"
-              >
-                <AppIcon
-                  name="filter"
-                  size={13}
-                  color={
-                    quickFilter !== 'ALL' || activeAdvancedFilterCount > 0
-                      ? '#1D4ED8'
-                      : '#475569'
-                  }
-                />
-                <Text
-                  style={[
-                    styles.toolbarBtnText,
-                    (quickFilter !== 'ALL' || activeAdvancedFilterCount > 0) &&
-                      styles.toolbarBtnTextActive,
-                  ]}
-                  numberOfLines={1}
-                >
-                  {getFilterDropdownLabel()}
-                </Text>
-                {(quickFilter !== 'ALL' || activeAdvancedFilterCount > 0) && (
-                  <View style={styles.activeDot} testID="filter-active-dot" />
-                )}
-                <AppIcon
-                  name="chevron-down"
-                  size={12}
-                  color={
-                    quickFilter !== 'ALL' || activeAdvancedFilterCount > 0
-                      ? '#1D4ED8'
-                      : '#94A3B8'
-                  }
-                />
-              </TouchableOpacity>
+          {/* Mobile: Clean 2-Column Grid (Row 2: Filter & Sort | Row 3: Import & Export) */}
+          {isMobile ? (
+            <View style={styles.mobileControlsGrid} testID="cases-mobile-toolbar-grid">
+              <View style={styles.mobileGridRow}>
+                <View style={styles.mobileGridCell}>{renderFilterButton(true)}</View>
+                {renderSortButton(true)}
+              </View>
+              <View style={styles.mobileGridRow}>
+                <View style={styles.mobileGridCell}>{renderImportButton(true)}</View>
+                <View style={styles.mobileGridCell}>{renderExportButton(true)}</View>
+              </View>
             </View>
-
-            {/* Sort Dropdown Button */}
-            <View ref={sortBtnRef} collapsable={false} style={styles.controlBtnWrapper}>
-              <TouchableOpacity
-                style={[styles.toolbarBtn, styles.dropdownBtn]}
-                onPress={handleOpenSortDropdown}
-                testID="cases-sort-dropdown-btn"
-                accessibilityLabel="Sort cases dropdown"
-              >
-                <AppIcon name="sliders" size={13} color="#475569" />
-                <Text style={styles.toolbarBtnText} numberOfLines={1}>
-                  {getSortDropdownLabel()}
-                </Text>
-                <AppIcon name="chevron-down" size={12} color="#94A3B8" />
-              </TouchableOpacity>
+          ) : (
+            /* Tablet & Desktop: Preserved Single-Row Controls */
+            <View
+              style={[styles.controlsRowDesktop, !isDesktop && styles.controlsRowTablet]}
+            >
+              <View style={!isDesktop ? styles.mobileGridCell : styles.desktopBtnWrap}>
+                {renderFilterButton(!isDesktop)}
+              </View>
+              {renderSortButton(!isDesktop)}
+              <View style={!isDesktop ? styles.mobileGridCell : styles.desktopBtnWrap}>
+                {renderImportButton(!isDesktop)}
+              </View>
+              <View style={!isDesktop ? styles.mobileGridCell : styles.desktopBtnWrap}>
+                {renderExportButton(!isDesktop)}
+              </View>
             </View>
-
-            {/* Import Files Button */}
-            <TouchableOpacity
-              style={[styles.toolbarBtn, styles.importBtn]}
-              onPress={() => setIsImportModalVisible(true)}
-              testID="import-cases-button"
-              accessibilityLabel={t('import.importFiles', 'Import Files')}
-            >
-              <AppIcon name="upload" size={13} color="#FFFFFF" />
-              <Text style={styles.importBtnText} numberOfLines={1}>
-                {width < 360 ? 'Import' : isDesktop ? 'Import Files' : 'Import'}
-              </Text>
-            </TouchableOpacity>
-
-            {/* Export CSV Button */}
-            <TouchableOpacity
-              style={[styles.toolbarBtn, styles.exportBtn]}
-              onPress={handleExportCsv}
-              disabled={isExportingCsv}
-              testID="export-cases-csv-button"
-              accessibilityLabel={t('export.exportCsv', 'Export CSV')}
-            >
-              <AppIcon
-                name="download"
-                size={13}
-                color={isExportingCsv ? '#94A3B8' : Colors.primary}
-              />
-              <Text
-                style={[
-                  styles.exportBtnText,
-                  isExportingCsv && styles.exportBtnTextDisabled,
-                ]}
-                numberOfLines={1}
-              >
-                {isExportingCsv
-                  ? '...'
-                  : width < 360
-                    ? 'CSV'
-                    : isDesktop
-                      ? t('export.exportCsv', 'Export CSV')
-                      : 'Export'}
-              </Text>
-            </TouchableOpacity>
-          </View>
+          )}
         </View>
 
-        {/* Active Removable Filters Chips Bar */}
+        {/* Active Removable Filters Chips Bar (shown only when filters are applied) */}
         {activeChips.length > 0 && (
           <View style={styles.activeChipsBar} testID="active-filter-chips-row">
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
               <View style={styles.activeChipsInner}>
-                <Text style={styles.activeChipsLabel}>Active Filters:</Text>
+                <Text style={styles.activeChipsLabel}>Filters:</Text>
                 {activeChips.map(chip => (
                   <TouchableOpacity
                     key={chip.key}
@@ -930,7 +565,7 @@ export default function CasesScreen() {
                     testID={`active-chip-${chip.key}`}
                   >
                     <Text style={styles.activeChipText}>{chip.label}</Text>
-                    <AppIcon name="x" size={12} color="#1D4ED8" />
+                    <AppIcon name="x" size={12} color={Colors.primary} />
                   </TouchableOpacity>
                 ))}
                 <TouchableOpacity
@@ -962,10 +597,14 @@ export default function CasesScreen() {
           />
         ) : totalCases === 0 ? (
           <EmptyState
-            title={t('cases.empty', 'No Cases Found')}
+            title={
+              searchQuery.trim() || activeChips.length > 0
+                ? 'No Matching Cases Found'
+                : t('cases.empty', 'No Cases Found')
+            }
             description={
               searchQuery.trim() || activeChips.length > 0
-                ? `No matters match your search criteria. Clear your search query or reset active filters.`
+                ? 'No matters match your search query or applied filters. Adjust or clear your filters to view all cases.'
                 : 'No cases are currently assigned to your practice docket.'
             }
             actionLabel={
@@ -1018,7 +657,6 @@ export default function CasesScreen() {
                 </Text>
 
                 <View style={styles.paginationNav}>
-                  {/* Previous Button */}
                   <TouchableOpacity
                     style={[
                       styles.pageNavBtn,
@@ -1031,7 +669,9 @@ export default function CasesScreen() {
                     <AppIcon
                       name="chevron-left"
                       size={14}
-                      color={currentPageSafe <= 1 ? '#CBD5E1' : '#1E293B'}
+                      color={
+                        currentPageSafe <= 1 ? Colors.borderStrong : Colors.text.primary
+                      }
                     />
                     <Text
                       style={[
@@ -1043,7 +683,6 @@ export default function CasesScreen() {
                     </Text>
                   </TouchableOpacity>
 
-                  {/* Compact Page Number Pills */}
                   {Array.from({ length: totalPages }, (_, i) => i + 1)
                     .filter(
                       p =>
@@ -1078,7 +717,6 @@ export default function CasesScreen() {
                       );
                     })}
 
-                  {/* Next Button */}
                   <TouchableOpacity
                     style={[
                       styles.pageNavBtn,
@@ -1099,7 +737,11 @@ export default function CasesScreen() {
                     <AppIcon
                       name="chevron-right"
                       size={14}
-                      color={currentPageSafe >= totalPages ? '#CBD5E1' : '#1E293B'}
+                      color={
+                        currentPageSafe >= totalPages
+                          ? Colors.borderStrong
+                          : Colors.text.primary
+                      }
                     />
                   </TouchableOpacity>
                 </View>
@@ -1109,12 +751,15 @@ export default function CasesScreen() {
         )}
       </View>
 
-      {/* Advanced Filter Modal */}
+      {/* Filter Bottom Sheet (Mobile) / Modal (Desktop) */}
       <CaseFilterModal
         testID="case-filter-modal"
         visible={isFilterModalVisible}
         onClose={() => setIsFilterModalVisible(false)}
         filters={advancedFilters}
+        availableCaseTypes={availableCaseTypes}
+        availableCourts={availableCourts}
+        availableYears={availableYears}
         onApplyFilters={newFilters => {
           setAdvancedFilters(newFilters);
           setCurrentPage(1);
@@ -1123,6 +768,22 @@ export default function CasesScreen() {
           setAdvancedFilters(DEFAULT_FILTERS);
           setCurrentPage(1);
         }}
+      />
+
+      {/* Sort Bottom Sheet (Mobile) / Popover (Desktop) */}
+      <SortDropdownMenu
+        visible={isSortDropdownOpen}
+        onClose={() => setIsSortDropdownOpen(false)}
+        sortBy={sortBy}
+        sortAsc={sortAsc}
+        onSelectSort={(field, asc) => {
+          setSortBy(field);
+          if (typeof asc === 'boolean') {
+            setSortAsc(asc);
+          }
+          setCurrentPage(1);
+        }}
+        anchorPosition={sortMenuCoords}
       />
 
       {/* Edit Case Modal */}
@@ -1195,36 +856,6 @@ export default function CasesScreen() {
           showToast(t('import.successToast', 'Case import completed'), 'success');
         }}
       />
-
-      {/* Filter Dropdown Popover Menu */}
-      <FilterDropdownMenu
-        visible={isFilterDropdownOpen}
-        onClose={() => setIsFilterDropdownOpen(false)}
-        activeFilter={quickFilter}
-        onSelectFilter={f => {
-          setQuickFilter(f);
-          setCurrentPage(1);
-        }}
-        onOpenAdvanced={() => setIsFilterModalVisible(true)}
-        onResetAll={handleClearAllFilters}
-        anchorPosition={filterMenuCoords}
-      />
-
-      {/* Sort Dropdown Popover Menu */}
-      <SortDropdownMenu
-        visible={isSortDropdownOpen}
-        onClose={() => setIsSortDropdownOpen(false)}
-        sortBy={sortBy}
-        sortAsc={sortAsc}
-        onSelectSort={(field, asc) => {
-          setSortBy(field);
-          if (typeof asc === 'boolean') {
-            setSortAsc(asc);
-          }
-          setCurrentPage(1);
-        }}
-        anchorPosition={sortMenuCoords}
-      />
     </ScreenContainer>
   );
 }
@@ -1232,8 +863,7 @@ export default function CasesScreen() {
 const styles = StyleSheet.create({
   mainWrapper: {
     flex: 1,
-    paddingHorizontal: Spacing.md,
-    paddingTop: Spacing.sm,
+    paddingTop: Spacing.xs,
   },
   desktopContainer: {
     maxWidth: 1200,
@@ -1253,8 +883,8 @@ const styles = StyleSheet.create({
     color: Colors.text.primary,
   },
   toolbarContainer: {
-    gap: 8,
-    marginBottom: Spacing.xs,
+    gap: 10,
+    marginBottom: Spacing.sm,
   },
   toolbarDesktop: {
     flexDirection: 'row',
@@ -1266,25 +896,29 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    width: '100%',
   },
   searchContainerDesktop: {
     flex: 1,
-    maxWidth: 520,
+    maxWidth: 500,
+    width: undefined,
   },
   searchInputWrap: {
     flex: 1,
+    minWidth: 0,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: Colors.surface,
-    borderColor: Colors.border,
+    borderColor: Colors.borderStrong,
     borderWidth: 1,
     borderRadius: Radius.input,
     paddingHorizontal: 12,
-    height: 40,
+    height: 44,
     gap: 8,
   },
   searchInput: {
     flex: 1,
+    minWidth: 0,
     fontSize: 13,
     color: Colors.text.primary,
     height: '100%',
@@ -1293,85 +927,116 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   voiceSearchButton: {
-    width: 40,
-    height: 40,
-    borderRadius: Radius.button,
-    backgroundColor: Colors.surfaceSubtle,
-    borderColor: Colors.border,
+    width: 44,
+    height: 44,
+    borderRadius: Radius.input,
+    backgroundColor: Colors.surface,
+    borderColor: Colors.borderStrong,
     borderWidth: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  controlsRow: {
+  mobileControlsGrid: {
+    gap: 10,
+    width: '100%',
+  },
+  mobileGridRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    flexWrap: 'nowrap',
+    gap: 10,
+    width: '100%',
+  },
+  mobileGridCell: {
+    flex: 1,
+    minWidth: 0,
+  },
+  mobileGridBtn: {
+    width: '100%',
+    height: 44,
+    paddingHorizontal: 10,
   },
   controlsRowDesktop: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
   },
-  controlBtnWrapper: {
-    flexShrink: 1,
+  controlsRowTablet: {
+    width: '100%',
+    gap: 10,
+  },
+  desktopBtnWrap: {
+    flexShrink: 0,
   },
   toolbarBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    height: 38,
-    paddingHorizontal: 9,
-    borderRadius: 8,
+    height: 42,
+    paddingHorizontal: 12,
+    borderRadius: Radius.button,
     borderWidth: 1,
-    borderColor: '#CBD5E1',
-    backgroundColor: '#FFFFFF',
-    gap: 4,
+    borderColor: Colors.borderStrong,
+    backgroundColor: Colors.surface,
+    gap: 6,
   },
-  dropdownBtn: {
-    backgroundColor: '#F8FAFC',
+  secondaryToolbarBtn: {
+    backgroundColor: Colors.surface,
   },
   toolbarBtnActive: {
-    backgroundColor: '#EFF6FF',
-    borderColor: '#3B82F6',
+    backgroundColor: Colors.surfaceBlue,
+    borderColor: Colors.primary,
+  },
+  toolbarBtnDisabled: {
+    opacity: 0.6,
   },
   toolbarBtnText: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '600',
-    color: '#334155',
+    color: Colors.text.primary,
+    flexShrink: 1,
   },
   toolbarBtnTextActive: {
-    color: '#1D4ED8',
+    color: Colors.primary,
     fontWeight: '700',
   },
-  activeDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#1D4ED8',
+  filterCountPill: {
+    minWidth: 20,
+    height: 20,
+    paddingHorizontal: 5,
+    borderRadius: 10,
+    backgroundColor: Colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  filterCountPillText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.text.white,
   },
   importBtn: {
     backgroundColor: Colors.primary,
     borderColor: Colors.primary,
   },
   importBtnText: {
-    color: '#FFFFFF',
-    fontSize: 12,
+    color: Colors.text.white,
+    fontSize: 13,
     fontWeight: '600',
   },
   exportBtn: {
-    backgroundColor: '#F8FAFC',
-    borderColor: '#CBD5E1',
+    backgroundColor: Colors.surface,
+    borderColor: Colors.primary,
   },
   exportBtnText: {
     color: Colors.primary,
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '600',
   },
   exportBtnTextDisabled: {
-    color: '#94A3B8',
+    color: Colors.text.muted,
   },
   activeChipsBar: {
     paddingVertical: 4,
-    marginBottom: 4,
+    marginBottom: 6,
   },
   activeChipsInner: {
     flexDirection: 'row',
@@ -1381,23 +1046,23 @@ const styles = StyleSheet.create({
   activeChipsLabel: {
     fontSize: 11,
     fontWeight: '700',
-    color: '#64748B',
+    color: Colors.text.muted,
     textTransform: 'uppercase',
   },
   activeChipPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    backgroundColor: '#EFF6FF',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.surfaceBlue,
     borderWidth: 1,
-    borderColor: '#BFDBFE',
+    borderColor: Colors.borderStrong,
   },
   activeChipText: {
-    fontSize: 11,
-    color: '#1D4ED8',
+    fontSize: 12,
+    color: Colors.primary,
     fontWeight: '600',
   },
   clearAllLink: {
@@ -1405,7 +1070,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
   },
   clearAllLinkText: {
-    fontSize: 11,
+    fontSize: 12,
     color: Colors.danger,
     fontWeight: '600',
   },
@@ -1425,14 +1090,14 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: Spacing.xs,
     borderTopWidth: 1,
-    borderTopColor: '#E2E8F0',
-    backgroundColor: '#FFFFFF',
+    borderTopColor: Colors.border,
+    backgroundColor: Colors.surface,
     flexWrap: 'wrap',
     gap: 8,
   },
   paginationSummary: {
     fontSize: 12,
-    color: '#64748B',
+    color: Colors.text.muted,
     fontWeight: '500',
   },
   paginationNav: {
@@ -1445,31 +1110,31 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 4,
     paddingHorizontal: 8,
-    paddingVertical: 5,
+    paddingVertical: 6,
     borderRadius: 6,
     borderWidth: 1,
-    borderColor: '#CBD5E1',
-    backgroundColor: '#FFFFFF',
+    borderColor: Colors.borderStrong,
+    backgroundColor: Colors.surface,
   },
   pageNavBtnDisabled: {
-    borderColor: '#E2E8F0',
-    backgroundColor: '#F8FAFC',
+    borderColor: Colors.border,
+    backgroundColor: Colors.background,
   },
   pageNavBtnText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#1E293B',
+    color: Colors.text.primary,
   },
   pageNavBtnTextDisabled: {
-    color: '#94A3B8',
+    color: Colors.text.muted,
   },
   pageNumPill: {
     minWidth: 28,
     height: 28,
     borderRadius: 6,
     borderWidth: 1,
-    borderColor: '#CBD5E1',
-    backgroundColor: '#FFFFFF',
+    borderColor: Colors.borderStrong,
+    backgroundColor: Colors.surface,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 4,
@@ -1481,14 +1146,14 @@ const styles = StyleSheet.create({
   pageNumText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#334155',
+    color: Colors.text.secondary,
   },
   pageNumTextActive: {
-    color: '#FFFFFF',
+    color: Colors.text.white,
   },
   pageEllipsis: {
     fontSize: 12,
-    color: '#94A3B8',
+    color: Colors.text.muted,
     paddingHorizontal: 2,
   },
 });

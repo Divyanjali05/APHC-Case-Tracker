@@ -41,7 +41,8 @@ export default function AdminDashboardScreen() {
   const isDesktop = width >= 960;
   const isTablet = width >= 640 && width < 960;
 
-  const { user, isSuperuser, isAuthenticated, isAdmin, signOut } = useAuth();
+  const { user, isSuperuser, isAuthenticated, isAdmin, isLoggingOut, signOut } =
+    useAuth();
   const { showToast } = useToast();
 
   const {
@@ -56,13 +57,19 @@ export default function AdminDashboardScreen() {
   const [isSigningOut, setIsSigningOut] = useState(false);
 
   const handleConfirmSignOut = async () => {
+    if (isSigningOut || isLoggingOut) {
+      return;
+    }
     setIsSigningOut(true);
     try {
       await pushNotificationService.deactivatePushNotifications().catch(() => {});
       await signOut();
       setIsLogoutDialogVisible(false);
       showToast(t('more.signedOutNotice', 'Signed out securely.'), 'info');
-      router.replace('/');
+      if (typeof router.dismissAll === 'function' && router.canDismiss?.()) {
+        router.dismissAll();
+      }
+      router.replace('/(auth)/login');
     } finally {
       setIsSigningOut(false);
     }
